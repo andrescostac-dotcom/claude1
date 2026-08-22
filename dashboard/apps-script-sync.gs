@@ -66,7 +66,7 @@ function canonicalTag(t) { return TAG_ALIASES[t] || t; }
 // función una vez desde el editor. Mirá el resultado en Ver > Registros (o Ctrl+Enter).
 // Pegame acá lo que imprima para que ajuste extractCustomField con el campo real.
 function debugLead() {
-  const LEAD_ID = 1243840; // <-- reemplazá por el ID real
+  const LEAD_ID = 22689017;
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
   const headers = { Authorization: 'Bearer ' + token };
