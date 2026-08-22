@@ -348,7 +348,7 @@ __CSS__
 
   <div class="panel wide-panel">
     <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
-    <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios</p>
+    <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *con visita y costo/visita solo cruzan cuando el UTM Content del lead en Kommo coincide con el nombre del conjunto de anuncios</p>
     <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
   </div>
 
@@ -485,6 +485,20 @@ function aggregateUtm(leads) {
     if (DATA.qualified_ids.includes(l.status_id)) byUtm[key].qualified++;
   }
   return Object.values(byUtm);
+}
+
+function leadsByUtmContent(leads) {
+  // Leads (y leads con visita) agrupados por utm_content — se usa para cruzar contra el
+  // nombre del conjunto de anuncios de Meta (adset_name) y sacar costo por visita por adset.
+  const byContent = {};
+  for (const l of leads) {
+    if (!l.utm_content) continue;
+    const c = byContent[l.utm_content] || { leads: 0, qualified: 0 };
+    c.leads++;
+    if (DATA.qualified_ids.includes(l.status_id)) c.qualified++;
+    byContent[l.utm_content] = c;
+  }
+  return byContent;
 }
 
 function aggregateWhatsappByAdset(rows) {
@@ -703,21 +717,29 @@ function render(rangeKey) {
 
   // ---- Conversaciones de WhatsApp por grupo de anuncios ----
   const waAdsets = aggregateWhatsappByAdset(filterMetaDaily(r.start, r.end));
+  const waVisits = leadsByUtmContent(curLeads); // cruce por utm_content === adset_name
   const waEntries = Object.entries(waAdsets).sort((a, b) => b[1].conversations - a[1].conversations);
   const waTotalConv = waEntries.reduce((s, [, a]) => s + a.conversations, 0);
   const waTotalSpend = waEntries.reduce((s, [, a]) => s + a.spend, 0);
+  const waTotalVisits = waEntries.reduce((s, [name]) => s + (waVisits[name]?.qualified || 0), 0);
   document.getElementById('whatsappTable').innerHTML = waEntries.length ? `
-    <thead><tr><th>Grupo de anuncios</th><th>Conversaciones</th><th>% del total</th><th>Inversión</th><th>Costo / conversación</th></tr></thead>
+    <thead><tr><th>Grupo de anuncios</th><th>Conversaciones</th><th>% del total</th><th>Inversión</th><th>Costo / conversación</th><th>Con visita*</th><th>Costo / visita*</th></tr></thead>
     <tbody>
-      ${waEntries.map(([name, a]) => `<tr>
+      ${waEntries.map(([name, a]) => {
+        const v = waVisits[name];
+        return `<tr>
         <td class="label-cell">${name}</td>
         <td>${fmtInt(a.conversations)}</td>
         <td>${waTotalConv ? fmtPct(a.conversations / waTotalConv * 100, 0) : '—'}</td>
         <td>${fmtARS(a.spend)}</td>
         <td>${a.conversations ? fmtARS(a.spend / a.conversations) : '—'}</td>
-      </tr>`).join('')}
+        <td>${v ? fmtInt(v.qualified) : '<span class="no-data">sin UTM</span>'}</td>
+        <td>${v && v.qualified ? fmtARS(a.spend / v.qualified) : '—'}</td>
+      </tr>`;
+      }).join('')}
       <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(waTotalConv)}</td><td>100%</td>
-        <td>${fmtARS(waTotalSpend)}</td><td>${waTotalConv ? fmtARS(waTotalSpend / waTotalConv) : '—'}</td></tr>
+        <td>${fmtARS(waTotalSpend)}</td><td>${waTotalConv ? fmtARS(waTotalSpend / waTotalConv) : '—'}</td>
+        <td>${fmtInt(waTotalVisits)}</td><td>${waTotalVisits ? fmtARS(waTotalSpend / waTotalVisits) : '—'}</td></tr>
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin conversaciones en este período.</td></tr></tbody>`;
 
   // ---- Leads por UTM (campaign x content), cruzado con gasto de Meta cuando el UTM
