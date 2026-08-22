@@ -28,8 +28,10 @@ const QUALIFIED_IDS = [105609867, 109532768, 105671691, 105671695, WON_ID]; // v
 const EXCLUDE_TAGS = ['Difusión', 'Follow-up 1', 'JN', 'WA', 'Interes Futuro', 'Apta Credito', 'Presu menos 300', 'Barrio Cerrado', 'Inmobiliaria'];
 const TAG_ALIASES = { 'Difusion Misiones': 'Misiones' };
 const ADSET_TO_DEV = { 'FAMILIA_CH': 'Chubut', 'FAMILIA_SI': 'Simón Iriondo', 'FAMILIA_MIS': 'Misiones' };
-const META_DAYS_BACK = 120; // solo se usa si META_SINCE_DATE está vacío
-const META_SINCE_DATE = '2020-01-01'; // trae todo el histórico disponible en la cuenta de Meta
+// Meta no deja pedir insights de más de 37 meses atrás (error #3018) — 36 es el máximo
+// histórico posible, calculado siempre relativo a "hoy" para que nunca se pase del límite
+// (a diferencia de una fecha fija, que eventualmente lo superaría con el paso del tiempo).
+const META_MONTHS_BACK = 36;
 
 function props() { return PropertiesService.getScriptProperties(); }
 
@@ -159,7 +161,8 @@ function syncMetaDaily() {
   const objectives = {}; const statuses = {};
   campaigns.forEach(c => { objectives[c.name] = c.objective; statuses[c.name] = c.status; });
 
-  const since = META_SINCE_DATE ? new Date(META_SINCE_DATE + 'T00:00:00Z') : new Date(Date.now() - META_DAYS_BACK * 86400000);
+  const since = new Date();
+  since.setMonth(since.getMonth() - META_MONTHS_BACK);
   const until = new Date();
   const fmt = d => Utilities.formatDate(d, 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd');
   const fields = 'campaign_name,adset_name,spend,impressions,reach,clicks,actions';
