@@ -325,6 +325,34 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .resolved-pill.unresolved { color: var(--ink-muted); background: var(--surface-2); font-weight: 500;
   font-style: italic; border: 1px dashed var(--border); }
 
+.tab-bar { display: flex; gap: 22px; margin: 0 0 22px; border-bottom: 1px solid var(--border); }
+.tab-btn { font-family: "Work Sans", sans-serif; font-size: 13.5px; font-weight: 600; color: var(--ink-muted);
+  background: none; border: none; border-bottom: 2px solid transparent; padding: 0 0 10px; cursor: pointer; }
+.tab-btn:hover { color: var(--ink); }
+.tab-btn.active { color: var(--ink); border-bottom-color: var(--accent-teal); }
+.tab-panel[hidden] { display: none; }
+
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; }
+.chart-card h3 { font-family: "Bricolage Grotesque", sans-serif; font-size: 13.5px; font-weight: 700; margin: 0 0 2px; }
+.chart-caption { font-size: 11.5px; color: var(--ink-muted); margin: 0 0 12px; line-height: 1.4; }
+.chart-wrap { position: relative; }
+.chart-svg { width: 100%; height: auto; aspect-ratio: 480 / 150; display: block; overflow: visible; }
+.chart-line { fill: none; stroke: var(--accent-blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-gridline { stroke: var(--border); stroke-width: 1; }
+.chart-axis-label { font-family: "IBM Plex Mono", monospace; font-size: 9px; fill: var(--ink-muted); }
+.chart-hover-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 2; }
+.chart-hover-dot { fill: var(--accent-blue); stroke: var(--surface-2); stroke-width: 2; }
+.chart-tooltip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; padding: 4px 9px; border-radius: 6px;
+  white-space: nowrap; transform: translate(-50%, -125%); box-shadow: var(--shadow); z-index: 2; }
+.chart-empty-note { font-size: 12px; color: var(--ink-muted); padding: 20px 0; text-align: center; }
+
+.reco-list { display: flex; flex-direction: column; gap: 10px; }
+.reco-item { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; line-height: 1.5; }
+.reco-icon { font-size: 16px; flex-shrink: 0; line-height: 1.4; }
+
 footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--ink-muted); }
 """
 
@@ -354,50 +382,81 @@ __CSS__
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
   <p class="range-caption" id="rangeCaption"></p>
 
-  <div class="kpi-groups" id="kpiGrid"></div>
+  <div class="tab-bar" id="tabBar" role="tablist">
+    <button class="tab-btn active" data-tab="resumen" role="tab" aria-selected="true">Resumen</button>
+    <button class="tab-btn" data-tab="costos" role="tab" aria-selected="false">Costos y recomendaciones</button>
+  </div>
 
-  <div class="panels">
-    <div class="panel">
-      <h2>Embudo de ventas</h2>
-      <p class="panel-sub">Leads generados en el período, por etapa actual en Kommo</p>
-      <div id="funnelRows"></div>
-      <div class="won-lost" id="wonLost"></div>
+  <div class="tab-panel" id="tab-resumen" role="tabpanel">
+
+    <div class="kpi-groups" id="kpiGrid"></div>
+
+    <div class="panels">
+      <div class="panel">
+        <h2>Embudo de ventas</h2>
+        <p class="panel-sub">Leads generados en el período, por etapa actual en Kommo</p>
+        <div id="funnelRows"></div>
+        <div class="won-lost" id="wonLost"></div>
+      </div>
+      <div class="panel">
+        <h2>Inversión por campaña</h2>
+        <p class="panel-sub">Gasto en Meta Ads en el período · ordenado de mayor a menor</p>
+        <div id="campaignRows"></div>
+      </div>
     </div>
-    <div class="panel">
-      <h2>Inversión por campaña</h2>
-      <p class="panel-sub">Gasto en Meta Ads en el período · ordenado de mayor a menor</p>
-      <div id="campaignRows"></div>
+
+    <div class="panel wide-panel">
+      <h2>Leads con visita por desarrollo × inversión en Meta</h2>
+      <p class="panel-sub">Cruce entre los conjuntos de anuncios de Meta y los desarrollos etiquetados en Kommo · "con visita" incluye visita, reunión realizada, 2da reunión, negociación y ganados</p>
+      <div class="table-scroll"><table class="data-table" id="devTable"></table></div>
     </div>
+
+    <div class="panel wide-panel">
+      <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
+      <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *con visita y costo/visita resuelven el UTM Content de cada lead en Kommo al conjunto de anuncios real (mapeo manual confirmado) — quedan afuera los leads con UTM sin resolver</p>
+      <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
+    </div>
+
+    <div class="panel wide-panel">
+      <h2>Leads por UTM (Campaign × Content)</h2>
+      <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). *Los costos son a nivel del conjunto de anuncios que resuelve el UTM Content — Meta no da spend por creatividad, así que se repiten en las filas que comparten adset.</p>
+      <div class="table-scroll"><table class="data-table" id="utmTable"></table></div>
+    </div>
+
+    <div class="panel wide-panel">
+      <h2>Meta Ads — panel completo</h2>
+      <p class="panel-sub">Todas las campañas activas y pausadas · el "resultado" depende del objetivo de cada campaña</p>
+      <div class="table-scroll"><table class="data-table" id="metaTable"></table></div>
+    </div>
+
+    <div class="panel wide-panel">
+      <h2>Leads por desarrollo</h2>
+      <p class="panel-sub">Volumen de leads generados en el período según la propiedad o zona etiquetada en Kommo</p>
+      <div id="projectRows"></div>
+    </div>
+
   </div>
 
-  <div class="panel wide-panel">
-    <h2>Leads con visita por desarrollo × inversión en Meta</h2>
-    <p class="panel-sub">Cruce entre los conjuntos de anuncios de Meta y los desarrollos etiquetados en Kommo · "con visita" incluye visita, reunión realizada, 2da reunión, negociación y ganados</p>
-    <div class="table-scroll"><table class="data-table" id="devTable"></table></div>
-  </div>
+  <div class="tab-panel" id="tab-costos" role="tabpanel" hidden>
 
-  <div class="panel wide-panel">
-    <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
-    <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *con visita y costo/visita resuelven el UTM Content de cada lead en Kommo al conjunto de anuncios real (mapeo manual confirmado) — quedan afuera los leads con UTM sin resolver</p>
-    <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
-  </div>
+    <div class="panel wide-panel">
+      <h2>Recomendaciones del período</h2>
+      <p class="panel-sub">Se generan solas según el rango de fechas elegido arriba — funciona como reporte semanal o mensual según qué filtro uses</p>
+      <div id="recommendations"></div>
+    </div>
 
-  <div class="panel wide-panel">
-    <h2>Leads por UTM (Campaign × Content)</h2>
-    <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). *Los costos son a nivel del conjunto de anuncios que resuelve el UTM Content — Meta no da spend por creatividad, así que se repiten en las filas que comparten adset.</p>
-    <div class="table-scroll"><table class="data-table" id="utmTable"></table></div>
-  </div>
+    <div class="panel wide-panel">
+      <h2>Costo por resultado en el tiempo</h2>
+      <p class="panel-sub">Evolución dentro del rango elegido arriba · pasá el mouse por un punto para ver el valor exacto</p>
+      <div class="chart-grid" id="costCharts"></div>
+    </div>
 
-  <div class="panel wide-panel">
-    <h2>Meta Ads — panel completo</h2>
-    <p class="panel-sub">Todas las campañas activas y pausadas · el "resultado" depende del objetivo de cada campaña</p>
-    <div class="table-scroll"><table class="data-table" id="metaTable"></table></div>
-  </div>
+    <div class="panel wide-panel">
+      <h2>Inversión por resultado</h2>
+      <p class="panel-sub">Mismos períodos que los gráficos de arriba, con la inversión y las cantidades detrás de cada costo. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
+      <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
+    </div>
 
-  <div class="panel wide-panel">
-    <h2>Leads por desarrollo</h2>
-    <p class="panel-sub">Volumen de leads generados en el período según la propiedad o zona etiquetada en Kommo</p>
-    <div id="projectRows"></div>
   </div>
 
   <footer>
@@ -611,6 +670,219 @@ function devLeadsByTagAndQualified(leads) {
     }
   }
   return byTag;
+}
+
+// ============ Tab "Costos y recomendaciones" ============
+
+function buildBuckets(startKey, endKey) {
+  // Diario si el rango elegido es corto (<=21 días), semanal si es más largo — así el
+  // gráfico no queda ni vacío (1 punto) ni saturado (100+ puntos) según el filtro activo.
+  const totalDays = Math.round((endKey - startKey) / 86400000) + 1;
+  const bucketDays = totalDays > 21 ? 7 : 1;
+  const buckets = [];
+  let cur = startKey;
+  while (cur <= endKey) {
+    const bEnd = Math.min(addDaysKey(cur, bucketDays - 1), endKey);
+    buckets.push({ start: cur, end: bEnd });
+    cur = addDaysKey(bEnd, 1);
+  }
+  return buckets;
+}
+
+function bucketLabel(b) {
+  return b.start === b.end ? keyToLabel(b.start) : `${keyToLabel(b.start)}–${keyToLabel(b.end)}`;
+}
+
+function computeBucketMetrics(b) {
+  const leads = filterLeads(b.start, b.end);
+  const metaRows = filterMetaDaily(b.start, b.end);
+  let spend = 0, waSpend = 0, conversations = 0;
+  for (const row of metaRows) {
+    spend += row.spend;
+    if (row.campaign_name === 'WHATSAPP') { waSpend += row.spend; conversations += row.conversations; }
+  }
+  let visit = 0, qualifiedVisit = 0;
+  for (const l of leads) {
+    if (DATA.qualified_ids.includes(l.status_id)) visit++;
+    if (DATA.qualified_visit_ids.includes(l.status_id)) qualifiedVisit++;
+  }
+  return { ...b, leads: leads.length, spend, waSpend, conversations, visit, qualifiedVisit };
+}
+
+// Gráfico de línea minimalista en SVG a mano (sin librerías externas) con hover: crosshair +
+// tooltip por punto. buckets ya vienen con las métricas calculadas (computeBucketMetrics).
+function renderLineChart(containerId, buckets, getValue, fmt) {
+  const el = document.getElementById(containerId);
+  const points = buckets.map(b => ({ x: (b.start + b.end) / 2, label: bucketLabel(b), value: getValue(b) }));
+  const valid = points.filter(p => p.value != null && !isNaN(p.value) && isFinite(p.value));
+  if (valid.length < 2) {
+    el.innerHTML = '<p class="chart-empty-note">No hay suficientes datos en este período para graficar una tendencia.</p>';
+    return;
+  }
+  const W = 480, H = 150, padL = 46, padR = 8, padT = 10, padB = 20;
+  const xs = points.map(p => p.x);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const vals = valid.map(p => p.value);
+  const minY = 0, maxY = Math.max(...vals) * 1.15 || 1;
+  const xScale = x => padL + (x - minX) / ((maxX - minX) || 1) * (W - padL - padR);
+  const yScale = y => H - padB - (y - minY) / ((maxY - minY) || 1) * (H - padT - padB);
+
+  let pathD = '';
+  points.forEach((p, i) => {
+    if (p.value == null) return;
+    const cmd = (i === 0 || points[i - 1].value == null) ? 'M' : 'L';
+    pathD += `${cmd} ${xScale(p.x).toFixed(1)} ${yScale(p.value).toFixed(1)} `;
+  });
+
+  const gridLines = [0, 0.5, 1].map(f => {
+    const y = minY + (maxY - minY) * f;
+    const yy = yScale(y).toFixed(1);
+    return `<line class="chart-gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>
+      <text class="chart-axis-label" x="${padL - 6}" y="${(+yy + 3).toFixed(1)}" text-anchor="end">${fmt(y)}</text>`;
+  }).join('');
+
+  const xLabels = `
+    <text class="chart-axis-label" x="${padL}" y="${H - 4}" text-anchor="start">${points[0].label}</text>
+    <text class="chart-axis-label" x="${W - padR}" y="${H - 4}" text-anchor="end">${points[points.length - 1].label}</text>`;
+
+  const dotsHtml = points.map((p, i) => p.value == null ? '' :
+    `<circle class="chart-pt" data-i="${i}" cx="${xScale(p.x).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="10" fill="transparent"/>`
+  ).join('');
+
+  el.innerHTML = `<div class="chart-wrap">
+    <svg class="chart-svg" viewBox="0 0 ${W} ${H}">
+      ${gridLines}
+      <path class="chart-line" d="${pathD.trim()}"/>
+      ${xLabels}
+      <line class="chart-hover-line" id="${containerId}-hoverline" x1="0" x2="0" y1="${padT}" y2="${H - padB}" style="display:none"/>
+      <circle class="chart-hover-dot" id="${containerId}-hoverdot" r="4" style="display:none"/>
+      ${dotsHtml}
+    </svg>
+    <div class="chart-tooltip" id="${containerId}-tooltip" style="display:none"></div>
+  </div>`;
+
+  const wrapEl = el.querySelector('.chart-wrap');
+  const svgEl = el.querySelector('svg');
+  const hoverLine = el.querySelector(`#${containerId}-hoverline`);
+  const hoverDot = el.querySelector(`#${containerId}-hoverdot`);
+  const tooltip = el.querySelector(`#${containerId}-tooltip`);
+  el.querySelectorAll('.chart-pt').forEach(c => {
+    const show = () => {
+      const i = +c.dataset.i;
+      const p = points[i];
+      if (p.value == null) return;
+      const cx = c.getAttribute('cx'), cy = c.getAttribute('cy');
+      hoverLine.setAttribute('x1', cx); hoverLine.setAttribute('x2', cx); hoverLine.style.display = '';
+      hoverDot.setAttribute('cx', cx); hoverDot.setAttribute('cy', cy); hoverDot.style.display = '';
+      const wrapRect = wrapEl.getBoundingClientRect();
+      const svgRect = svgEl.getBoundingClientRect();
+      const scaleX = svgRect.width / W, scaleY = svgRect.height / H;
+      tooltip.style.left = ((svgRect.left - wrapRect.left) + cx * scaleX) + 'px';
+      tooltip.style.top = ((svgRect.top - wrapRect.top) + cy * scaleY) + 'px';
+      tooltip.style.display = '';
+      tooltip.textContent = `${p.label} · ${fmt(p.value)}`;
+    };
+    c.addEventListener('mouseenter', show);
+    c.addEventListener('mousemove', show);
+    c.addEventListener('mouseleave', () => { hoverLine.style.display = 'none'; hoverDot.style.display = 'none'; tooltip.style.display = 'none'; });
+  });
+}
+
+function renderInvestmentTable(buckets) {
+  const el = document.getElementById('investmentTable');
+  if (!buckets.length) {
+    el.innerHTML = '<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin datos en este período.</td></tr></tbody>';
+    return;
+  }
+  el.innerHTML = `
+    <thead><tr>
+      <th>Período</th><th>Inversión</th>
+      <th>Leads nuevos</th><th>Costo / lead</th>
+      <th>Visitas</th><th>Costo / visita</th>
+      <th>Visita calificada</th><th>Costo / visita calif.</th>
+      <th>Conversaciones</th><th>Costo / conversación*</th>
+    </tr></thead>
+    <tbody>
+      ${buckets.map(b => `<tr>
+        <td class="label-cell">${bucketLabel(b)}</td>
+        <td>${fmtARS(b.spend)}</td>
+        <td>${fmtInt(b.leads)}</td>
+        <td>${b.leads ? fmtARS(b.spend / b.leads) : '—'}</td>
+        <td>${fmtInt(b.visit)}</td>
+        <td>${b.visit ? fmtARS(b.spend / b.visit) : '—'}</td>
+        <td>${fmtInt(b.qualifiedVisit)}</td>
+        <td>${b.qualifiedVisit ? fmtARS(b.spend / b.qualifiedVisit) : '—'}</td>
+        <td>${fmtInt(b.conversations)}</td>
+        <td>${b.conversations ? fmtARS(b.waSpend / b.conversations) : '—'}</td>
+      </tr>`).join('')}
+    </tbody>`;
+}
+
+// Reglas simples, recalculadas en cada render — funcionan como un mini reporte automático
+// que se ajusta solo al rango de fechas elegido (semanal si filtrás "últimos 7 días",
+// mensual si filtrás "el mes pasado", etc.).
+function computeRecommendations(r, curLeads, curMeta, curAgg, prevAgg, prevMeta) {
+  const items = [];
+  const MIN_VISITS = 2, MIN_CONVERSATIONS = 5;
+
+  // Mejor / peor desarrollo por costo por visita — exige un piso de inversión además de
+  // visitas mínimas, para no comparar un desarrollo casi sin presupuesto de prueba contra
+  // uno con inversión real (el "más barato" de un canal apenas testeado no es un ganador
+  // confiable, solo tiene pocos datos).
+  const MIN_SPEND_FOR_RECO = 15000;
+  const devLeads = devLeadsByTagAndQualified(curLeads);
+  const devRows = Object.entries(DATA.adset_to_dev).map(([adset, dev]) => {
+    const spend = curMeta.byAdset[adset]?.spend || 0;
+    const l = devLeads[dev] || { leads: 0, qualified: 0 };
+    return { dev, spend, qualified: l.qualified, costVisit: l.qualified ? spend / l.qualified : null };
+  }).filter(d => d.spend >= MIN_SPEND_FOR_RECO && d.qualified >= MIN_VISITS);
+  if (devRows.length >= 2) {
+    const sorted = [...devRows].sort((a, b) => a.costVisit - b.costVisit);
+    const best = sorted[0], worst = sorted[sorted.length - 1];
+    if (best.dev !== worst.dev && worst.costVisit > best.costVisit) {
+      const mult = worst.costVisit / best.costVisit;
+      const multLabel = mult >= 20 ? 'varias veces' : `${mult.toFixed(1)}×`;
+      items.push({ icon: '🟢', html: `<b>${best.dev}</b> tiene el mejor costo por visita del período: ${fmtARS(best.costVisit)} (${fmtInt(best.qualified)} visitas, ${fmtARS(best.spend)} invertidos). Buen candidato para reforzar presupuesto.` });
+      items.push({ icon: '🔴', html: `<b>${worst.dev}</b> tiene el peor costo por visita: ${fmtARS(worst.costVisit)} — ${multLabel} más caro que ${best.dev}. Vale la pena revisar creatividad, segmentación o bajarle presupuesto.` });
+    }
+  }
+
+  // Mejor / peor grupo de anuncios por costo por conversación de WhatsApp
+  const waAdsets = aggregateWhatsappByAdset(filterMetaDaily(r.start, r.end));
+  const waRows = Object.entries(waAdsets).filter(([, a]) => a.conversations >= MIN_CONVERSATIONS);
+  if (waRows.length >= 2) {
+    const sorted = [...waRows].sort((a, b) => (a[1].spend / a[1].conversations) - (b[1].spend / b[1].conversations));
+    const [bestName, bestA] = sorted[0], [worstName, worstA] = sorted[sorted.length - 1];
+    if (bestName !== worstName) {
+      items.push({ icon: '💬', html: `En WhatsApp, <b>${bestName}</b> tiene el costo por conversación más bajo (${fmtARS(bestA.spend / bestA.conversations)}) y <b>${worstName}</b> el más alto (${fmtARS(worstA.spend / worstA.conversations)}).` });
+    }
+  }
+
+  // Tendencia del costo por visita vs. el período anterior
+  if (r.prevStart !== null) {
+    const curCV = curAgg.qualified ? curMeta.spend / curAgg.qualified : null;
+    const prevCV = prevAgg.qualified ? prevMeta.spend / prevAgg.qualified : null;
+    if (curCV != null && prevCV) {
+      const change = (curCV - prevCV) / prevCV * 100;
+      if (Math.abs(change) >= 15) {
+        items.push({ icon: change > 0 ? '📈' : '📉',
+          html: `El costo por visita general ${change > 0 ? 'subió' : 'bajó'} ${Math.abs(change).toFixed(0)}% vs. el período anterior (${fmtARS(prevCV)} → ${fmtARS(curCV)}).` });
+      }
+    }
+  }
+
+  if (curAgg.qualified < 5) {
+    items.push({ icon: 'ℹ️', html: `Muestra chica en este período (${fmtInt(curAgg.qualified)} visitas) — las recomendaciones son más confiables con más volumen. Probá con un rango más amplio (ej. "Todo el período").` });
+  }
+
+  return items;
+}
+
+function renderRecommendations(items) {
+  const el = document.getElementById('recommendations');
+  el.innerHTML = items.length
+    ? `<div class="reco-list">${items.map(it => `<div class="reco-item"><span class="reco-icon">${it.icon}</span><span>${it.html}</span></div>`).join('')}</div>`
+    : '<p class="empty-note">No hay suficientes datos todavía para generar recomendaciones en este período.</p>';
 }
 
 function delta(curr, prev) {
@@ -906,6 +1178,20 @@ function render(rangeKey) {
       <div class="bar-track"><div class="bar-fill" style="width:${count / maxProj * 100}%; background:var(--accent-teal)"></div></div>
       <div class="bar-value">${fmtInt(count)}</div>
     </div>`).join('') : '<p class="empty-note">Sin leads en este período.</p>';
+
+  // ---- Tab "Costos y recomendaciones" ----
+  const buckets = buildBuckets(r.start, r.end).map(computeBucketMetrics);
+  document.getElementById('costCharts').innerHTML = `
+    <div class="chart-card"><h3>Costo por lead nuevo</h3><p class="chart-caption">Inversión total en Meta Ads / leads generados</p><div id="chartLead"></div></div>
+    <div class="chart-card"><h3>Costo por visita</h3><p class="chart-caption">⚠️ los últimos períodos quedan subestimados: un lead recién creado todavía no tuvo tiempo de llegar a "visita"</p><div id="chartVisit"></div></div>
+    <div class="chart-card"><h3>Costo por visita calificada</h3><p class="chart-caption">⚠️ mismo efecto de rezago que "costo por visita", más marcado por ser una etapa más avanzada</p><div id="chartQualVisit"></div></div>
+    <div class="chart-card"><h3>Costo por conversación iniciada</h3><p class="chart-caption">Inversión en la campaña de WhatsApp / conversaciones iniciadas</p><div id="chartConv"></div></div>`;
+  renderLineChart('chartLead', buckets, b => b.leads ? b.spend / b.leads : null, fmtARS);
+  renderLineChart('chartVisit', buckets, b => b.visit ? b.spend / b.visit : null, fmtARS);
+  renderLineChart('chartQualVisit', buckets, b => b.qualifiedVisit ? b.spend / b.qualifiedVisit : null, fmtARS);
+  renderLineChart('chartConv', buckets, b => b.conversations ? b.waSpend / b.conversations : null, fmtARS);
+  renderInvestmentTable(buckets);
+  renderRecommendations(computeRecommendations(r, curLeads, curMeta, curAgg, prevAgg, prevMeta));
 }
 
 const FILTERS = [
@@ -915,6 +1201,12 @@ const FILTERS = [
 document.getElementById('filterBar').innerHTML = FILTERS.map(([key, label]) =>
   `<button class="filter-btn" data-range="${key}">${label}</button>`).join('');
 document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => render(b.dataset.range)));
+
+document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-selected', b === btn ? 'true' : 'false'); });
+  document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.id !== `tab-${btn.dataset.tab}`; });
+}));
+
 render('allTime');
 """
 

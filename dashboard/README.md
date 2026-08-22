@@ -100,6 +100,31 @@
     revisar el nombre exacto del campo en Kommo (Ajustes → Campos
     personalizados → Leads) y ajustar `extractCustomField`.
 
+## Tab "Costos y recomendaciones" (agregado 23/8)
+
+- **Gráficos de costo en el tiempo** (Costo por lead nuevo / por visita / por visita
+  calificada / por conversación iniciada): se buildean con `buildBuckets` (diario si
+  el rango ≤21 días, semanal si es más largo) + `computeBucketMetrics`, y usan los
+  mismos filtros de fecha que el resto del dashboard (comparten `render()`). Son SVG
+  a mano, sin librerías — línea + hover con crosshair y tooltip.
+  ⚠️ "Costo por visita" y "costo por visita calificada" tienen un sesgo de rezago
+  real: agrupan por `created_at` del lead, no por la fecha en que llegó a esa etapa
+  (ese dato no existe), así que los períodos más recientes siempre van a verse
+  artificialmente baratos/vacíos — un lead de ayer todavía no tuvo tiempo de llegar
+  a "2da reunión". Hay un aviso (⚠️) en la tarjeta de cada uno de estos 2 gráficos.
+- **Tabla "Inversión por resultado"**: mismos buckets que los gráficos, con inversión
+  + cantidad + costo unitario por columna. Costo/conversación usa el spend de la
+  campaña WHATSAPP únicamente (no el total de Meta Ads), igual que en el resto del
+  dashboard.
+- **Recomendaciones**: reglas simples recalculadas en cada render (no hay IA de por
+  medio) — mejor/peor desarrollo por costo por visita (con piso de $15.000 de
+  inversión y mínimo 2 visitas, para no comparar un desarrollo casi sin testear
+  contra uno con presupuesto real), mejor/peor grupo de anuncios por costo de
+  conversación de WhatsApp (mínimo 5 conversaciones), y variación del costo por
+  visita general vs. el período anterior si supera ±15%. Al cambiar el filtro de
+  fecha arriba, se recalculan solas — "Últimos 7 días" da un reporte semanal,
+  "El mes pasado" uno mensual, etc.
+
 ## Nota sobre el orden del funnel
 
 `build_dashboard.py` define `STATUS_ORDER_HINT`: un orden inferido de los
