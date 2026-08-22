@@ -61,6 +61,22 @@ function syncAll() {
 
 function canonicalTag(t) { return TAG_ALIASES[t] || t; }
 
+// --- DEBUG: pega el ID de un lead que en Kommo muestre "Información rastreada"
+// (lo ves en la URL cuando abrís ese lead, ej. .../leads/detail/1243840) y corré esta
+// función una vez desde el editor. Mirá el resultado en Ver > Registros (o Ctrl+Enter).
+// Pegame acá lo que imprima para que ajuste extractCustomField con el campo real.
+function debugLead() {
+  const LEAD_ID = 1243840; // <-- reemplazá por el ID real
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+  const resp = UrlFetchApp.fetch(
+    `https://${subdomain}/api/v4/leads/${LEAD_ID}?with=source_id,catalog_elements`,
+    { headers, muteHttpExceptions: true });
+  Logger.log('HTTP ' + resp.getResponseCode());
+  Logger.log(resp.getContentText());
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
