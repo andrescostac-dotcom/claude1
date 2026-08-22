@@ -370,14 +370,21 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .resolved-pill.unresolved { color: var(--ink-muted); background: var(--surface-2); font-weight: 500;
   font-style: italic; border: 1px dashed var(--border); }
 
-.tab-bar { display: flex; gap: 22px; margin: 0 0 22px; border-bottom: 1px solid var(--border); overflow-x: auto; }
-.tab-btn { font-family: "Work Sans", sans-serif; font-size: 13.5px; font-weight: 600; color: var(--ink-muted);
-  background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 2px;
-  cursor: pointer; min-height: 44px; white-space: nowrap; } /* padding real (no solo visual) para que el dedo no falle el toque */
+/* Selector de vista tipo "segmented control" — mismo lenguaje visual que los botones de fecha,
+   para que se lea de entrada como algo para tocar/clickear, no como una etiqueta de sección. */
+.tab-bar {
+  display: flex; gap: 4px; margin: 0 0 22px; padding: 4px; width: fit-content; max-width: 100%;
+  overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 100px;
+}
+.tab-btn {
+  font-family: "Work Sans", sans-serif; font-size: 13.5px; font-weight: 600; color: var(--ink-muted);
+  background: none; border: none; border-radius: 100px; padding: 10px 18px; min-height: 44px;
+  cursor: pointer; white-space: nowrap; transition: background-color .15s, color .15s, box-shadow .15s;
+}
 .tab-btn:hover { color: var(--ink); }
-.tab-btn.active { color: var(--ink); border-bottom-color: var(--accent-teal); }
+.tab-btn.active { color: var(--bg); background: var(--ink); box-shadow: var(--shadow); }
 .tab-panel[hidden] { display: none; }
-@media (max-width: 480px) { .tab-bar { gap: 16px; } .tab-btn { font-size: 12.5px; } }
+@media (max-width: 480px) { .tab-btn { font-size: 12.5px; padding: 10px 14px; } }
 
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; }
@@ -434,6 +441,8 @@ HTML_TEMPLATE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow">
 <title>Dashboard CosCor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -534,8 +543,8 @@ __CSS__
   </div>
 
   <div class="pdf-cta">
-    <button class="pdf-btn" id="pdfBtn" type="button">📄 Descargar reporte en PDF</button>
-    <p class="pdf-cta-note">Incluye los dos tabs (Resumen + Costos y recomendaciones) con el filtro de fecha que tengas puesto arriba</p>
+    <button class="pdf-btn" id="pdfBtn" type="button">📄 Descargar reporte</button>
+    <p class="pdf-cta-note" id="pdfBtnNote">Baja una copia completa de esta página (los dos tabs, con el filtro de fecha que tengas puesto arriba). Abrila y usá Imprimir → Guardar como PDF si necesitás el PDF en sí.</p>
   </div>
 
   <footer>
@@ -1357,10 +1366,54 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click
   document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.id !== `tab-${btn.dataset.tab}`; });
 }));
 
-// El PDF sale con el "Guardar como PDF" nativo del navegador (window.print) — @media print
-// más abajo fuerza que se vean los dos tabs completos aunque en pantalla solo uno esté activo,
-// y oculta lo que no tiene sentido en papel (tabs, botones de filtro).
-document.getElementById('pdfBtn').addEventListener('click', () => window.print());
+// window.print() no sirve acá: el visor de Artifacts corre la página en un sandbox que bloquea
+// llamadas a print()/descargas directas iniciadas por script. La forma soportada de ofrecer un
+// archivo es la capability "downloads" — el viewer confirma y guarda del lado de ellos.
+// @media print (más abajo) se deja igual: si alguien igual usa el Imprimir nativo del navegador
+// (Ctrl/Cmd+P, no el botón) sobre el HTML descargado, sale con los 2 tabs completos.
+(function () {
+  const btn = document.getElementById('pdfBtn');
+  const note = document.getElementById('pdfBtnNote');
+  const originalLabel = btn.textContent;
+  const originalNote = note.textContent;
+  let busy = false;
+
+  async function handleClick() {
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    btn.textContent = 'Preparando…';
+
+    const downloads = (window.claude && typeof window.claude.use === 'function')
+      ? await window.claude.use('downloads') : null;
+
+    if (!downloads) {
+      btn.textContent = originalLabel;
+      note.textContent = 'La descarga no está disponible en esta vista. Probá abrir el link del dashboard directo en el navegador (no dentro del chat) y volvé a intentar.';
+      busy = false; btn.disabled = false;
+      return;
+    }
+
+    try {
+      const snapshot = '<!doctype html>\n' + document.documentElement.outerHTML;
+      const stamp = new Date().toISOString().slice(0, 10);
+      await downloads.save({ filename: `dashboard-coscor-${stamp}.html`, data: snapshot });
+      btn.textContent = '✓ Descargado';
+      note.textContent = 'Listo. Abrí el archivo y usá Imprimir → Guardar como PDF si necesitás el PDF.';
+    } catch (err) {
+      if (err && err.code === 'declined') {
+        // el viewer dijo que no — no es un error, no hace falta avisar nada más
+      } else {
+        btn.textContent = 'No se pudo descargar';
+        note.textContent = 'Algo falló al generar el archivo. Si persiste, probá desde el navegador en vez de la app.';
+        console.error('downloads.save failed', err);
+      }
+    } finally {
+      setTimeout(() => { btn.textContent = originalLabel; note.textContent = originalNote; btn.disabled = false; busy = false; }, 2600);
+    }
+  }
+  btn.addEventListener('click', handleClick);
+})();
 
 render('allTime');
 """
