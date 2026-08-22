@@ -43,6 +43,32 @@
    actualización silenciosa. Si algo falla (Sheet sin cambios hace varios
    días, error de Drive, etc.) avisar al usuario.
 
+## Métricas clave (agregado 22/8)
+
+- **Leads con visita**: KPI + tabla "Leads con visita por desarrollo × inversión
+  en Meta". Definición: `status_id` en `visita - reunion`, `Reunion realizada`,
+  `2da Reunion`, `Negociacion` o `Logrado con éxito` (constante
+  `QUALIFIED_IDS` en `build_dashboard.py`, la misma que ya existía como
+  "leads calificados"). Se muestra el conteo, el % sobre el total de leads del
+  período, y el desglose por desarrollo/grupo de anuncios (vía el tag de
+  Kommo, cruzado con `ADSET_TO_DEV`).
+- **Conversaciones de WhatsApp por grupo de anuncios**: nueva tabla, filtra
+  `meta_daily` a filas cuya campaña tiene `objective = OUTCOME_LEADS` (la
+  campaña de conversión por WhatsApp) y agrupa por `adset_name`.
+- **Filtro "Todo el período"**: nuevo, y ahora es el default al abrir el
+  dashboard. Calcula el rango dinámicamente como la fecha más antigua entre
+  todos los leads y todas las filas de Meta hasta hoy — no hay comparación
+  "vs. período anterior" en esta vista (no tiene sentido para un acumulado
+  histórico), los badges de variación se ocultan.
+- **Historial completo**: Kommo ya traía todos los leads sin filtro de fecha
+  (la paginación de `syncKommoLeads` no tiene límite). Meta sí estaba
+  limitado a `META_DAYS_BACK = 120` días rodantes — se cambió a
+  `META_SINCE_DATE = '2020-01-01'` en `apps-script-sync.gs` para traer todo
+  el histórico que la cuenta de Meta tenga disponible, de una vez y para
+  siempre (no vuelve a truncar con el paso del tiempo). Requiere que el
+  usuario vuelva a pegar el `.gs` actualizado en su Apps Script y corra
+  `syncAll` una vez.
+
 ## Nota sobre el orden del funnel
 
 `build_dashboard.py` define `STATUS_ORDER_HINT`: un orden inferido de los

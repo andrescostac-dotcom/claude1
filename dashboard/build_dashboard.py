@@ -324,9 +324,15 @@ __CSS__
   </div>
 
   <div class="panel wide-panel">
-    <h2>Leads por desarrollo × inversión en Meta</h2>
-    <p class="panel-sub">Cruce entre los conjuntos de anuncios de Meta y los desarrollos etiquetados en Kommo · calificado incluye visita, reunión realizada, 2da reunión, negociación y ganados</p>
+    <h2>Leads con visita por desarrollo × inversión en Meta</h2>
+    <p class="panel-sub">Cruce entre los conjuntos de anuncios de Meta y los desarrollos etiquetados en Kommo · "con visita" incluye visita, reunión realizada, 2da reunión, negociación y ganados</p>
     <div class="table-scroll"><table class="data-table" id="devTable"></table></div>
+  </div>
+
+  <div class="panel wide-panel">
+    <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
+    <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios</p>
+    <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
   </div>
 
   <div class="panel wide-panel">
@@ -383,6 +389,24 @@ const now = new Date();
 const today = argDateFromMs(now.getTime());
 const todayKey = dateKey(today.y, today.m, today.d);
 
+function minDataKey() {
+  // Earliest date across all leads + all Meta rows, so "Todo el período" always
+  // covers the full history in the Sheet, however far back it goes.
+  let minKey = todayKey;
+  for (const l of DATA.leads) {
+    if (l.created_at == null) continue;
+    const ad = argDateFromMs(l.created_at * 1000);
+    const k = dateKey(ad.y, ad.m, ad.d);
+    if (k < minKey) minKey = k;
+  }
+  for (const r of DATA.meta_daily) {
+    const [y, m, d] = r.date.split('-').map(Number);
+    const k = dateKey(y, m - 1, d);
+    if (k < minKey) minKey = k;
+  }
+  return minKey;
+}
+
 function buildRanges() {
   const yStart = addDaysKey(todayKey, -1), yEnd = yStart;
   const l7Start = addDaysKey(todayKey, -7), l7End = addDaysKey(todayKey, -1);
@@ -399,6 +423,8 @@ function buildRanges() {
   const prevMtdEndDay = Math.min(mtdDayCount, daysInMonth(prevLastMonthY, prevLastMonthM));
 
   return {
+    allTime: { label: 'Todo el período', start: minDataKey(), end: todayKey,
+      prevStart: null, prevEnd: null },
     yesterday: { label: 'Ayer', start: yStart, end: yEnd,
       prevStart: addDaysKey(yStart, -1), prevEnd: addDaysKey(yEnd, -1) },
     last7: { label: 'Últimos 7 días', start: l7Start, end: l7End,
@@ -424,6 +450,20 @@ function filterLeads(startKey, endKey) {
 }
 
 function canonicalTag(t) { return DATA.tag_aliases[t] || t; }
+
+function aggregateWhatsappByAdset(rows) {
+  // Conversaciones de WhatsApp iniciadas en Meta, por conjunto de anuncios —
+  // solo campañas con objetivo de conversión (OUTCOME_LEADS = WhatsApp).
+  const byAdset = {};
+  for (const r of rows) {
+    if (DATA.campaign_objectives[r.campaign_name] !== 'OUTCOME_LEADS') continue;
+    const a = byAdset[r.adset_name] || { spend: 0, conversations: 0 };
+    a.spend += r.spend;
+    a.conversations += r.conversations;
+    byAdset[r.adset_name] = a;
+  }
+  return byAdset;
+}
 
 function aggregateMeta(rows) {
   const agg = { spend: 0, impressions: 0, reach: 0, clicks: 0, link_clicks: 0, conversations: 0, leads_meta: 0, post_engagement: 0 };
@@ -508,39 +548,40 @@ const FUNNEL_ORDER = Object.keys(DATA.status_order)
 
 function render(rangeKey) {
   const r = RANGES[rangeKey];
+  const noPrev = r.prevStart === null;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.range === rangeKey));
 
   const curLeads = filterLeads(r.start, r.end);
-  const prevLeads = filterLeads(r.prevStart, r.prevEnd);
+  const prevLeads = noPrev ? [] : filterLeads(r.prevStart, r.prevEnd);
   const curMeta = aggregateMeta(filterMetaDaily(r.start, r.end));
-  const prevMeta = aggregateMeta(filterMetaDaily(r.prevStart, r.prevEnd));
+  const prevMeta = aggregateMeta(noPrev ? [] : filterMetaDaily(r.prevStart, r.prevEnd));
   const curAgg = aggregateLeads(curLeads);
   const prevAgg = aggregateLeads(prevLeads);
+  const badge = (curVal, prevVal, higherIsGood) => noPrev ? '' : deltaBadge(curVal, prevVal ?? 0, higherIsGood);
 
-  document.getElementById('rangeCaption').textContent =
-    `${keyToLabel(r.start)} – ${keyToLabel(r.end)} · vs. ${keyToLabel(r.prevStart)} – ${keyToLabel(r.prevEnd)}`;
+  document.getElementById('rangeCaption').textContent = noPrev
+    ? `${keyToLabel(r.start)} – ${keyToLabel(r.end)} · todo el historial disponible`
+    : `${keyToLabel(r.start)} – ${keyToLabel(r.end)} · vs. ${keyToLabel(r.prevStart)} – ${keyToLabel(r.prevEnd)}`;
 
   // ---- KPIs ----
   const convRate = (curAgg.won + curAgg.lost) ? curAgg.won / (curAgg.won + curAgg.lost) * 100 : null;
   const prevConvRate = (prevAgg.won + prevAgg.lost) ? prevAgg.won / (prevAgg.won + prevAgg.lost) * 100 : null;
   const qualRate = curAgg.total ? curAgg.qualified / curAgg.total * 100 : null;
-  const prevQualRate = prevAgg.total ? prevAgg.qualified / prevAgg.total * 100 : null;
   const whatsappCur = curMeta.byCampaign['WHATSAPP'] || { spend: 0, conversations: 0 };
   const whatsappPrev = prevMeta.byCampaign['WHATSAPP'] || { spend: 0, conversations: 0 };
   const cpcCur = whatsappCur.conversations ? whatsappCur.spend / whatsappCur.conversations : null;
-  const cpcPrev = whatsappPrev.conversations ? whatsappPrev.spend / whatsappPrev.conversations : null;
 
   const kpis = [
-    { label: 'Leads generados', value: fmtInt(curAgg.total), badge: deltaBadge(curAgg.total, prevAgg.total, true),
+    { label: 'Leads generados', value: fmtInt(curAgg.total), badge: badge(curAgg.total, prevAgg.total, true),
       sub: `${fmtInt(curAgg.won)} ganados · ${fmtInt(curAgg.lost)} perdidos` },
-    { label: 'Tasa de conversión', value: fmtPct(convRate), badge: convRate === null ? '' : deltaBadge(convRate, prevConvRate ?? 0, true),
+    { label: 'Leads con visita', value: fmtInt(curAgg.qualified), badge: badge(curAgg.qualified, prevAgg.qualified, true),
+      sub: `${fmtPct(qualRate)} del total · visita, 2da reunión, negociación o ganado` },
+    { label: 'Tasa de conversión', value: fmtPct(convRate), badge: convRate === null ? '' : badge(convRate, prevConvRate, true),
       sub: 'ganados / (ganados + perdidos)' },
-    { label: 'Tasa de leads calificados', value: fmtPct(qualRate), badge: qualRate === null ? '' : deltaBadge(qualRate, prevQualRate ?? 0, true),
-      sub: `${fmtInt(curAgg.qualified)} de ${fmtInt(curAgg.total)} leads` },
-    { label: 'Inversión en Meta Ads', value: fmtARS(curMeta.spend), badge: deltaBadge(curMeta.spend, prevMeta.spend, null),
+    { label: 'Inversión en Meta Ads', value: fmtARS(curMeta.spend), badge: badge(curMeta.spend, prevMeta.spend, null),
       sub: `${fmtInt(curMeta.impressions)} impresiones` },
-    { label: 'Costo por conversación WhatsApp', value: cpcCur === null ? '—' : fmtARS(cpcCur), badge: cpcCur === null ? '' : deltaBadge(cpcCur, cpcPrev ?? 0, false),
-      sub: `${fmtInt(whatsappCur.conversations)} conversaciones` },
+    { label: 'Conversaciones de WhatsApp', value: fmtInt(whatsappCur.conversations), badge: badge(whatsappCur.conversations, whatsappPrev.conversations, true),
+      sub: cpcCur === null ? 'Meta Ads · WhatsApp' : `${fmtARS(cpcCur)} costo por conversación` },
   ];
   document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
     <div class="kpi-card">
@@ -593,7 +634,7 @@ function render(rangeKey) {
   }).sort((a, b) => b.spend - a.spend);
   const totalDev = devRows.reduce((acc, r) => ({ spend: acc.spend + r.spend, leads: acc.leads + r.leads, qualified: acc.qualified + r.qualified }), { spend: 0, leads: 0, qualified: 0 });
   document.getElementById('devTable').innerHTML = `
-    <thead><tr><th>Desarrollo</th><th>Leads</th><th>Calificados</th><th>Tasa calif.</th><th>Inversión Meta</th><th>Costo / lead</th><th>Costo / lead calif.</th></tr></thead>
+    <thead><tr><th>Desarrollo</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th><th>Inversión Meta</th><th>Costo / lead</th><th>Costo / lead con visita</th></tr></thead>
     <tbody>
       ${devRows.map(r => `<tr>
         <td class="label-cell">${r.name}</td>
@@ -609,6 +650,25 @@ function render(rangeKey) {
         <td>${fmtARS(totalDev.spend)}</td><td>${totalDev.leads ? fmtARS(totalDev.spend / totalDev.leads) : '—'}</td>
         <td>${totalDev.qualified ? fmtARS(totalDev.spend / totalDev.qualified) : '—'}</td></tr>
     </tbody>`;
+
+  // ---- Conversaciones de WhatsApp por grupo de anuncios ----
+  const waAdsets = aggregateWhatsappByAdset(filterMetaDaily(r.start, r.end));
+  const waEntries = Object.entries(waAdsets).sort((a, b) => b[1].conversations - a[1].conversations);
+  const waTotalConv = waEntries.reduce((s, [, a]) => s + a.conversations, 0);
+  const waTotalSpend = waEntries.reduce((s, [, a]) => s + a.spend, 0);
+  document.getElementById('whatsappTable').innerHTML = waEntries.length ? `
+    <thead><tr><th>Grupo de anuncios</th><th>Conversaciones</th><th>% del total</th><th>Inversión</th><th>Costo / conversación</th></tr></thead>
+    <tbody>
+      ${waEntries.map(([name, a]) => `<tr>
+        <td class="label-cell">${name}</td>
+        <td>${fmtInt(a.conversations)}</td>
+        <td>${waTotalConv ? fmtPct(a.conversations / waTotalConv * 100, 0) : '—'}</td>
+        <td>${fmtARS(a.spend)}</td>
+        <td>${a.conversations ? fmtARS(a.spend / a.conversations) : '—'}</td>
+      </tr>`).join('')}
+      <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(waTotalConv)}</td><td>100%</td>
+        <td>${fmtARS(waTotalSpend)}</td><td>${waTotalConv ? fmtARS(waTotalSpend / waTotalConv) : '—'}</td></tr>
+    </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin conversaciones en este período.</td></tr></tbody>`;
 
   // ---- Meta full panel ----
   const metaRows = Object.entries(curMeta.byCampaign).sort((a, b) => b[1].spend - a[1].spend);
@@ -650,13 +710,13 @@ function render(rangeKey) {
 }
 
 const FILTERS = [
-  ['yesterday', 'Ayer'], ['last7', 'Últimos 7 días'], ['last30', 'Últimos 30 días'],
+  ['allTime', 'Todo el período'], ['yesterday', 'Ayer'], ['last7', 'Últimos 7 días'], ['last30', 'Últimos 30 días'],
   ['lastMonth', 'El mes pasado'], ['mtd', 'Este mes hasta la fecha'],
 ];
 document.getElementById('filterBar').innerHTML = FILTERS.map(([key, label]) =>
   `<button class="filter-btn" data-range="${key}">${label}</button>`).join('');
 document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => render(b.dataset.range)));
-render('last30');
+render('allTime');
 """
 
 html = (HTML_TEMPLATE

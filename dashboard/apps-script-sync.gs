@@ -28,7 +28,8 @@ const QUALIFIED_IDS = [105609867, 109532768, 105671691, 105671695, WON_ID]; // v
 const EXCLUDE_TAGS = ['Difusión', 'Follow-up 1', 'JN', 'WA', 'Interes Futuro', 'Apta Credito', 'Presu menos 300', 'Barrio Cerrado', 'Inmobiliaria'];
 const TAG_ALIASES = { 'Difusion Misiones': 'Misiones' };
 const ADSET_TO_DEV = { 'FAMILIA_CH': 'Chubut', 'FAMILIA_SI': 'Simón Iriondo', 'FAMILIA_MIS': 'Misiones' };
-const META_DAYS_BACK = 120;
+const META_DAYS_BACK = 120; // solo se usa si META_SINCE_DATE está vacío
+const META_SINCE_DATE = '2020-01-01'; // trae todo el histórico disponible en la cuenta de Meta
 
 function props() { return PropertiesService.getScriptProperties(); }
 
@@ -118,7 +119,7 @@ function syncMetaDaily() {
   const objectives = {}; const statuses = {};
   campaigns.forEach(c => { objectives[c.name] = c.objective; statuses[c.name] = c.status; });
 
-  const since = new Date(Date.now() - META_DAYS_BACK * 86400000);
+  const since = META_SINCE_DATE ? new Date(META_SINCE_DATE + 'T00:00:00Z') : new Date(Date.now() - META_DAYS_BACK * 86400000);
   const until = new Date();
   const fmt = d => Utilities.formatDate(d, 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd');
   const fields = 'campaign_name,adset_name,spend,impressions,reach,clicks,actions';
