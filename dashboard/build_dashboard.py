@@ -349,8 +349,8 @@ header.top { display: flex; align-items: center; justify-content: space-between;
   background-attachment: local, local, scroll, scroll;
 }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
-table.data-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); font-weight: 600; padding: 0 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-th.sortable-th { cursor: pointer; user-select: none; }
+table.data-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th.sortable-th { cursor: pointer; user-select: none; min-height: 44px; } /* padding real, no solo bottom, para que el toque no falle */
 th.sortable-th:hover { color: var(--ink); }
 th.sortable-th::after { content: '⇅'; margin-left: 5px; opacity: .35; font-size: 9px; }
 th.sortable-th.sort-asc::after { content: '▲'; opacity: 1; color: var(--accent-blue); }
@@ -371,12 +371,13 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
   font-style: italic; border: 1px dashed var(--border); }
 
 .tab-bar { display: flex; gap: 22px; margin: 0 0 22px; border-bottom: 1px solid var(--border); overflow-x: auto; }
-@media (max-width: 480px) { .tab-bar { gap: 16px; } .tab-btn { font-size: 12.5px; white-space: nowrap; } }
 .tab-btn { font-family: "Work Sans", sans-serif; font-size: 13.5px; font-weight: 600; color: var(--ink-muted);
-  background: none; border: none; border-bottom: 2px solid transparent; padding: 0 0 10px; cursor: pointer; }
+  background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 2px;
+  cursor: pointer; min-height: 44px; white-space: nowrap; } /* padding real (no solo visual) para que el dedo no falle el toque */
 .tab-btn:hover { color: var(--ink); }
 .tab-btn.active { color: var(--ink); border-bottom-color: var(--accent-teal); }
 .tab-panel[hidden] { display: none; }
+@media (max-width: 480px) { .tab-bar { gap: 16px; } .tab-btn { font-size: 12.5px; } }
 
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; }
@@ -432,6 +433,7 @@ HTML_TEMPLATE = """<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dashboard CosCor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
