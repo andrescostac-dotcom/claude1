@@ -231,6 +231,14 @@ header.top { display: flex; align-items: center; justify-content: space-between;
   letter-spacing: 0.02em; text-align: center; line-height: 1.05; flex-shrink: 0; box-shadow: var(--shadow);
 }
 .brand-text h1 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pdf-btn {
+  display: flex; align-items: center; gap: 6px; font-family: "Work Sans", sans-serif; font-size: 13px;
+  font-weight: 600; color: var(--bg); background: var(--ink); border: none; border-radius: 100px;
+  padding: 9px 16px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; transition: opacity .15s;
+}
+.pdf-btn:hover { opacity: .85; }
+.pdf-btn:active { opacity: .7; }
 .updated-badge {
   display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border);
   border-radius: 100px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-muted);
@@ -310,6 +318,11 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .table-scroll { overflow-x: auto; }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
 table.data-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); font-weight: 600; padding: 0 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th.sortable-th { cursor: pointer; user-select: none; }
+th.sortable-th:hover { color: var(--ink); }
+th.sortable-th::after { content: '⇅'; margin-left: 5px; opacity: .35; font-size: 9px; }
+th.sortable-th.sort-asc::after { content: '▲'; opacity: 1; color: var(--accent-blue); }
+th.sortable-th.sort-desc::after { content: '▼'; opacity: 1; color: var(--accent-blue); }
 table.data-table td { padding: 10px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.data-table td.label-cell { font-weight: 600; white-space: normal; font-variant-numeric: initial; }
 table.data-table tr:last-child td { border-bottom: none; }
@@ -354,6 +367,32 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .reco-icon { font-size: 16px; flex-shrink: 0; line-height: 1.4; }
 
 footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--ink-muted); }
+
+/* ---- Pulido visual: los elementos con datos "vivos" (KPIs, panels, chart cards) responden
+   un poco al hover para sentirse interactivos, no solo estáticos. ---- */
+.kpi-card, .panel, .chart-card { transition: box-shadow .15s, transform .15s; }
+.kpi-card:hover, .chart-card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(27,24,18,0.08), 0 12px 28px -12px rgba(27,24,18,0.22); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .kpi-card:hover, :root:not([data-theme="light"]) .chart-card:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 12px 28px -12px rgba(0,0,0,0.6); }
+}
+:root[data-theme="dark"] .kpi-card:hover, :root[data-theme="dark"] .chart-card:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 12px 28px -12px rgba(0,0,0,0.6); }
+
+/* ---- Descarga en PDF: "Guardar como PDF" nativo del navegador vía window.print(). Fuerza
+   los 2 tabs visibles (el reporte completo, no solo el que estaba abierto en pantalla) y
+   saca todo lo que no tiene sentido en papel. ---- */
+@media print {
+  body { background: #fff; }
+  .pdf-btn, .tab-bar, .filter-bar, .updated-badge .pulse { display: none !important; }
+  .tab-panel[hidden] { display: block !important; }
+  .tab-panel:first-of-type { margin-bottom: 32px; page-break-after: always; }
+  .kpi-card:hover, .chart-card:hover { transform: none; box-shadow: var(--shadow); }
+  .panel, .kpi-card, .chart-card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
+  .wide-panel, .kpi-section { break-inside: avoid; }
+  table.data-table { font-size: 11px; }
+  th.sortable-th::after { content: ''; }
+  .chart-tooltip { display: none !important; }
+  a[href]::after { content: ''; }
+}
 """
 
 HTML_TEMPLATE = """<!doctype html>
@@ -376,7 +415,10 @@ __CSS__
       <div class="brand-mark">CosCor</div>
       <div class="brand-text"><h1>Dashboard CosCor</h1></div>
     </div>
-    <div class="updated-badge"><span class="pulse"></span> Actualizado el __FECHA__</div>
+    <div class="header-actions">
+      <div class="updated-badge"><span class="pulse"></span> Actualizado el __FECHA__</div>
+      <button class="pdf-btn" id="pdfBtn" type="button">📄 Descargar PDF</button>
+    </div>
   </header>
 
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
@@ -413,7 +455,7 @@ __CSS__
 
     <div class="panel wide-panel">
       <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
-      <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *con visita y costo/visita resuelven el UTM Content de cada lead en Kommo al conjunto de anuncios real (mapeo manual confirmado) — quedan afuera los leads con UTM sin resolver</p>
+      <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *las columnas de visita resuelven el UTM Content de cada lead en Kommo al conjunto de anuncios real (mapeo manual confirmado) — quedan afuera los leads con UTM sin resolver</p>
       <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
     </div>
 
@@ -562,6 +604,49 @@ function filterLeads(startKey, endKey) {
 }
 
 function canonicalTag(t) { return DATA.tag_aliases[t] || t; }
+
+// Ordenamiento de tablas al hacer click en el header — genérico, se re-llama cada vez que se
+// repuebla una tabla (el listener viejo se descarta solo junto con el <thead> reemplazado).
+// Lee el valor real de cada celda desde data-sort (no el texto formateado con $/% ya
+// redondeado), así que el orden numérico es siempre correcto. Las filas .total-row quedan
+// siempre pegadas abajo.
+function makeSortable(tableId) {
+  const table = document.getElementById(tableId);
+  const thead = table && table.querySelector('thead');
+  if (!thead) return;
+  const ths = [...thead.querySelectorAll('th')];
+  ths.forEach((th, colIdx) => {
+    th.classList.add('sortable-th');
+    th.addEventListener('click', () => {
+      const tbody = table.querySelector('tbody');
+      const totalRow = tbody.querySelector('tr.total-row');
+      const rows = [...tbody.querySelectorAll('tr')].filter(r => r !== totalRow);
+      if (!rows.length) return;
+      const asc = th.dataset.sortDir !== 'asc';
+      ths.forEach(t => { delete t.dataset.sortDir; t.classList.remove('sort-asc', 'sort-desc'); });
+      th.dataset.sortDir = asc ? 'asc' : 'desc';
+      th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+      rows.sort((rowA, rowB) => {
+        const cellA = rowA.children[colIdx], cellB = rowB.children[colIdx];
+        const rawA = cellA && cellA.dataset.sort, rawB = cellB && cellB.dataset.sort;
+        const numA = parseFloat(rawA), numB = parseFloat(rawB);
+        const numeric = rawA !== undefined && rawB !== undefined && (rawA === '' || !isNaN(numA)) && (rawB === '' || !isNaN(numB));
+        if (numeric) {
+          const aNaN = isNaN(numA), bNaN = isNaN(numB);
+          if (aNaN && bNaN) return 0;
+          if (aNaN) return 1; // sin dato siempre al final, en cualquier dirección
+          if (bNaN) return -1;
+          return asc ? numA - numB : numB - numA;
+        }
+        const textA = (rawA ?? cellA?.textContent ?? '').trim();
+        const textB = (rawB ?? cellB?.textContent ?? '').trim();
+        return asc ? textA.localeCompare(textB, 'es') : textB.localeCompare(textA, 'es');
+      });
+      rows.forEach(r => tbody.appendChild(r));
+      if (totalRow) tbody.appendChild(totalRow);
+    });
+  });
+}
 
 function aggregateUtm(leads) {
   const byUtm = {};
@@ -803,19 +888,26 @@ function renderInvestmentTable(buckets) {
       <th>Conversaciones</th><th>Costo / conversación*</th>
     </tr></thead>
     <tbody>
-      ${buckets.map(b => `<tr>
-        <td class="label-cell">${bucketLabel(b)}</td>
-        <td>${fmtARS(b.spend)}</td>
-        <td>${fmtInt(b.leads)}</td>
-        <td>${b.leads ? fmtARS(b.spend / b.leads) : '—'}</td>
-        <td>${fmtInt(b.visit)}</td>
-        <td>${b.visit ? fmtARS(b.spend / b.visit) : '—'}</td>
-        <td>${fmtInt(b.qualifiedVisit)}</td>
-        <td>${b.qualifiedVisit ? fmtARS(b.spend / b.qualifiedVisit) : '—'}</td>
-        <td>${fmtInt(b.conversations)}</td>
-        <td>${b.conversations ? fmtARS(b.waSpend / b.conversations) : '—'}</td>
-      </tr>`).join('')}
+      ${buckets.map(b => {
+        const costLead = b.leads ? b.spend / b.leads : null;
+        const costVisit = b.visit ? b.spend / b.visit : null;
+        const costQualVisit = b.qualifiedVisit ? b.spend / b.qualifiedVisit : null;
+        const costConv = b.conversations ? b.waSpend / b.conversations : null;
+        return `<tr>
+        <td class="label-cell" data-sort="${b.start}">${bucketLabel(b)}</td>
+        <td data-sort="${b.spend}">${fmtARS(b.spend)}</td>
+        <td data-sort="${b.leads}">${fmtInt(b.leads)}</td>
+        <td data-sort="${costLead ?? ''}">${costLead != null ? fmtARS(costLead) : '—'}</td>
+        <td data-sort="${b.visit}">${fmtInt(b.visit)}</td>
+        <td data-sort="${costVisit ?? ''}">${costVisit != null ? fmtARS(costVisit) : '—'}</td>
+        <td data-sort="${b.qualifiedVisit}">${fmtInt(b.qualifiedVisit)}</td>
+        <td data-sort="${costQualVisit ?? ''}">${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
+        <td data-sort="${b.conversations}">${fmtInt(b.conversations)}</td>
+        <td data-sort="${costConv ?? ''}">${costConv != null ? fmtARS(costConv) : '—'}</td>
+      </tr>`;
+      }).join('')}
     </tbody>`;
+  makeSortable('investmentTable');
 }
 
 // Reglas simples, recalculadas en cada render — funcionan como un mini reporte automático
@@ -1044,20 +1136,26 @@ function render(rangeKey) {
   document.getElementById('devTable').innerHTML = `
     <thead><tr><th>Desarrollo</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th><th>Inversión Meta</th><th>Costo / lead</th><th>Costo / lead con visita</th></tr></thead>
     <tbody>
-      ${devRows.map(r => `<tr>
-        <td class="label-cell">${r.name}</td>
-        <td>${fmtInt(r.leads)}</td>
-        <td>${fmtInt(r.qualified)}</td>
-        <td>${r.leads ? fmtPct(r.qualified / r.leads * 100, 0) : '—'}</td>
-        <td>${r.hasSpend ? fmtARS(r.spend) : '<span class="no-data">sin campaña propia</span>'}</td>
-        <td>${r.hasSpend && r.leads ? fmtARS(r.spend / r.leads) : '—'}</td>
-        <td>${r.hasSpend && r.qualified ? fmtARS(r.spend / r.qualified) : '—'}</td>
-      </tr>`).join('')}
+      ${devRows.map(r => {
+        const rate = r.leads ? r.qualified / r.leads * 100 : null;
+        const costLead = r.hasSpend && r.leads ? r.spend / r.leads : null;
+        const costQual = r.hasSpend && r.qualified ? r.spend / r.qualified : null;
+        return `<tr>
+        <td class="label-cell" data-sort="${r.name}">${r.name}</td>
+        <td data-sort="${r.leads}">${fmtInt(r.leads)}</td>
+        <td data-sort="${r.qualified}">${fmtInt(r.qualified)}</td>
+        <td data-sort="${rate ?? ''}">${rate != null ? fmtPct(rate, 0) : '—'}</td>
+        <td data-sort="${r.hasSpend ? r.spend : ''}">${r.hasSpend ? fmtARS(r.spend) : '<span class="no-data">sin campaña propia</span>'}</td>
+        <td data-sort="${costLead ?? ''}">${costLead != null ? fmtARS(costLead) : '—'}</td>
+        <td data-sort="${costQual ?? ''}">${costQual != null ? fmtARS(costQual) : '—'}</td>
+      </tr>`;
+      }).join('')}
       <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(totalDev.leads)}</td><td>${fmtInt(totalDev.qualified)}</td>
         <td>${totalDev.leads ? fmtPct(totalDev.qualified / totalDev.leads * 100, 0) : '—'}</td>
         <td>${fmtARS(totalDev.spend)}</td><td>${totalDev.leads ? fmtARS(totalDev.spend / totalDev.leads) : '—'}</td>
         <td>${totalDev.qualified ? fmtARS(totalDev.spend / totalDev.qualified) : '—'}</td></tr>
     </tbody>`;
+  makeSortable('devTable');
 
   // ---- Conversaciones de WhatsApp por grupo de anuncios ----
   const waAdsets = aggregateWhatsappByAdset(filterMetaDaily(r.start, r.end));
@@ -1066,25 +1164,39 @@ function render(rangeKey) {
   const waTotalConv = waEntries.reduce((s, [, a]) => s + a.conversations, 0);
   const waTotalSpend = waEntries.reduce((s, [, a]) => s + a.spend, 0);
   const waTotalVisits = waEntries.reduce((s, [name]) => s + (waVisits[name]?.visit || 0), 0);
+  const waTotalQualVisits = waEntries.reduce((s, [name]) => s + (waVisits[name]?.qualifiedVisit || 0), 0);
   document.getElementById('whatsappTable').innerHTML = waEntries.length ? `
-    <thead><tr><th>Grupo de anuncios</th><th>Conversaciones</th><th>% del total</th><th>Inversión</th><th>Costo / conversación</th><th>Con visita*</th><th>Costo / visita*</th></tr></thead>
+    <thead><tr>
+      <th>Grupo de anuncios</th><th>Conversaciones</th><th>% del total</th>
+      <th>Inversión</th><th>Costo / conversación</th>
+      <th>Con visita*</th><th>Costo / visita*</th>
+      <th>Visita calificada*</th><th>Costo / visita calificada*</th>
+    </tr></thead>
     <tbody>
       ${waEntries.map(([name, a]) => {
         const v = waVisits[name];
+        const pct = waTotalConv ? a.conversations / waTotalConv * 100 : null;
+        const cpc = a.conversations ? a.spend / a.conversations : null;
+        const costVisit = v && v.visit ? a.spend / v.visit : null;
+        const costQualVisit = v && v.qualifiedVisit ? a.spend / v.qualifiedVisit : null;
         return `<tr>
-        <td class="label-cell">${name}</td>
-        <td>${fmtInt(a.conversations)}</td>
-        <td>${waTotalConv ? fmtPct(a.conversations / waTotalConv * 100, 0) : '—'}</td>
-        <td>${fmtARS(a.spend)}</td>
-        <td>${a.conversations ? fmtARS(a.spend / a.conversations) : '—'}</td>
-        <td>${v ? fmtInt(v.visit) : '<span class="no-data">sin UTM</span>'}</td>
-        <td>${v && v.visit ? fmtARS(a.spend / v.visit) : '—'}</td>
+        <td class="label-cell" data-sort="${name}">${name}</td>
+        <td data-sort="${a.conversations}">${fmtInt(a.conversations)}</td>
+        <td data-sort="${pct ?? ''}">${pct != null ? fmtPct(pct, 0) : '—'}</td>
+        <td data-sort="${a.spend}">${fmtARS(a.spend)}</td>
+        <td data-sort="${cpc ?? ''}">${cpc != null ? fmtARS(cpc) : '—'}</td>
+        <td data-sort="${v ? v.visit : ''}">${v ? fmtInt(v.visit) : '<span class="no-data">sin UTM</span>'}</td>
+        <td data-sort="${costVisit ?? ''}">${costVisit != null ? fmtARS(costVisit) : '—'}</td>
+        <td data-sort="${v ? v.qualifiedVisit : ''}">${v ? fmtInt(v.qualifiedVisit) : '<span class="no-data">sin UTM</span>'}</td>
+        <td data-sort="${costQualVisit ?? ''}">${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
       </tr>`;
       }).join('')}
       <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(waTotalConv)}</td><td>100%</td>
         <td>${fmtARS(waTotalSpend)}</td><td>${waTotalConv ? fmtARS(waTotalSpend / waTotalConv) : '—'}</td>
-        <td>${fmtInt(waTotalVisits)}</td><td>${waTotalVisits ? fmtARS(waTotalSpend / waTotalVisits) : '—'}</td></tr>
+        <td>${fmtInt(waTotalVisits)}</td><td>${waTotalVisits ? fmtARS(waTotalSpend / waTotalVisits) : '—'}</td>
+        <td>${fmtInt(waTotalQualVisits)}</td><td>${waTotalQualVisits ? fmtARS(waTotalSpend / waTotalQualVisits) : '—'}</td></tr>
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin conversaciones en este período.</td></tr></tbody>`;
+  makeSortable('whatsappTable');
 
   // ---- Leads por UTM (campaign x content) ----
   // Leads/visitas: nivel de detalle real por UTM Content (creatividad). Costo/visita, costo/lead
@@ -1095,7 +1207,7 @@ function render(rangeKey) {
   const utmAdsetAgg = leadsByUtmContent(curLeads); // { [adset resuelto]: {leads, visit, qualifiedVisit} }
   document.getElementById('utmTable').innerHTML = utmRows.length ? `
     <thead><tr>
-      <th>UTM Campaign</th><th>UTM Content</th><th>Conjunto de anuncios (Meta)</th>
+      <th>UTM Content</th><th>Conjunto de anuncios (Meta)</th>
       <th>Leads</th><th>Con visita</th><th>Visita calificada</th>
       <th>Costo / visita*</th><th>Costo / visita calificada*</th><th>Costo / conversación*</th>
     </tr></thead>
@@ -1108,15 +1220,14 @@ function render(rangeKey) {
         const costQualVisit = metaAdset && agg && agg.qualifiedVisit ? metaAdset.spend / agg.qualifiedVisit : null;
         const costConv = metaAdset && metaAdset.conversations ? metaAdset.spend / metaAdset.conversations : null;
         return `<tr>
-          <td class="label-cell">${u.campaign}</td>
-          <td class="label-cell">${u.content}</td>
-          <td>${metaAdset ? `<span class="resolved-pill">${resolved}</span>` : '<span class="resolved-pill unresolved">sin resolver</span>'}</td>
-          <td>${fmtInt(u.leads)}</td>
-          <td>${fmtInt(u.qualified)}</td>
-          <td>${fmtInt(u.qualifiedVisit)}</td>
-          <td>${costVisit != null ? fmtARS(costVisit) : '—'}</td>
-          <td>${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
-          <td>${costConv != null ? fmtARS(costConv) : '—'}</td>
+          <td class="label-cell" data-sort="${u.content}">${u.content}</td>
+          <td data-sort="${resolved || ''}">${metaAdset ? `<span class="resolved-pill">${resolved}</span>` : '<span class="resolved-pill unresolved">sin resolver</span>'}</td>
+          <td data-sort="${u.leads}">${fmtInt(u.leads)}</td>
+          <td data-sort="${u.qualified}">${fmtInt(u.qualified)}</td>
+          <td data-sort="${u.qualifiedVisit}">${fmtInt(u.qualifiedVisit)}</td>
+          <td data-sort="${costVisit ?? ''}">${costVisit != null ? fmtARS(costVisit) : '—'}</td>
+          <td data-sort="${costQualVisit ?? ''}">${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
+          <td data-sort="${costConv ?? ''}">${costConv != null ? fmtARS(costConv) : '—'}</td>
         </tr>`;
       }).join('')}
       ${(() => {
@@ -1133,13 +1244,14 @@ function render(rangeKey) {
         const totConv = distinctAdsets.reduce((s, a) => s + curMeta.byAdset[a].conversations, 0);
         const totVisitMatched = distinctAdsets.reduce((s, a) => s + (utmAdsetAgg[a]?.visit || 0), 0);
         const totQualVisitMatched = distinctAdsets.reduce((s, a) => s + (utmAdsetAgg[a]?.qualifiedVisit || 0), 0);
-        return `<tr class="total-row"><td class="label-cell">Total</td><td></td><td></td>
+        return `<tr class="total-row"><td class="label-cell">Total</td><td></td>
           <td>${fmtInt(totLeads)}</td><td>${fmtInt(totVisit)}</td><td>${fmtInt(totQualVisit)}</td>
           <td>${totVisitMatched ? fmtARS(totSpend / totVisitMatched) : '—'}</td>
           <td>${totQualVisitMatched ? fmtARS(totSpend / totQualVisitMatched) : '—'}</td>
           <td>${totConv ? fmtARS(totSpend / totConv) : '—'}</td></tr>`;
       })()}
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin leads en este período.</td></tr></tbody>`;
+  makeSortable('utmTable');
 
   // ---- Meta full panel ----
   const metaRows = Object.entries(curMeta.byCampaign).sort((a, b) => b[1].spend - a[1].spend);
@@ -1156,18 +1268,19 @@ function render(rangeKey) {
         const cpm = c.impressions ? c.spend / c.impressions * 1000 : null;
         const status = (DATA.campaign_status[name] || '').toLowerCase();
         return `<tr>
-          <td class="label-cell">${name}</td>
-          <td><span class="status-pill ${status === 'active' ? 'active' : 'paused'}">${status === 'active' ? 'Activa' : 'Pausada'}</span></td>
-          <td>${fmtInt(resultVal || 0)}<span class="result-caption">${label}</span></td>
-          <td>${fmtARS(c.spend)}</td>
-          <td>${cpa === null ? '—' : fmtARS(cpa)}</td>
-          <td>${fmtInt(c.impressions)}</td>
-          <td>${fmtInt(c.reach)}</td>
-          <td>${fmtPct(ctr, 2)}</td>
-          <td>${cpm === null ? '—' : fmtARS(cpm)}</td>
+          <td class="label-cell" data-sort="${name}">${name}</td>
+          <td data-sort="${status}"><span class="status-pill ${status === 'active' ? 'active' : 'paused'}">${status === 'active' ? 'Activa' : 'Pausada'}</span></td>
+          <td data-sort="${resultVal || 0}">${fmtInt(resultVal || 0)}<span class="result-caption">${label}</span></td>
+          <td data-sort="${c.spend}">${fmtARS(c.spend)}</td>
+          <td data-sort="${cpa ?? ''}">${cpa === null ? '—' : fmtARS(cpa)}</td>
+          <td data-sort="${c.impressions}">${fmtInt(c.impressions)}</td>
+          <td data-sort="${c.reach}">${fmtInt(c.reach)}</td>
+          <td data-sort="${ctr ?? ''}">${fmtPct(ctr, 2)}</td>
+          <td data-sort="${cpm ?? ''}">${cpm === null ? '—' : fmtARS(cpm)}</td>
         </tr>`;
       }).join('')}
     </tbody>`;
+  makeSortable('metaTable');
 
   // ---- Leads por desarrollo (list) ----
   const projEntries = Object.entries(curAgg.byTag).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -1206,6 +1319,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click
   document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-selected', b === btn ? 'true' : 'false'); });
   document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.id !== `tab-${btn.dataset.tab}`; });
 }));
+
+// El PDF sale con el "Guardar como PDF" nativo del navegador (window.print) — @media print
+// más abajo fuerza que se vean los dos tabs completos aunque en pantalla solo uno esté activo,
+// y oculta lo que no tiene sentido en papel (tabs, botones de filtro).
+document.getElementById('pdfBtn').addEventListener('click', () => window.print());
 
 render('allTime');
 """
