@@ -234,12 +234,12 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 }
 .brand-text h1 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 22px; margin: 0; letter-spacing: -0.01em; }
 .updated-badge {
-  display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 100px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-muted); max-width: 100%;
+  display: flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 100px; padding: 6px 12px; font-size: 10.5px; color: var(--ink-muted); max-width: 100%;
   font-family: "IBM Plex Mono", monospace; box-shadow: var(--shadow); white-space: nowrap; box-sizing: border-box;
 }
 @media (max-width: 480px) {
-  .updated-badge { white-space: normal; font-size: 11.5px; line-height: 1.4; }
+  .updated-badge { white-space: normal; font-size: 10px; line-height: 1.4; }
 }
 .updated-badge .pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--accent-teal);
@@ -369,7 +369,7 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
   cursor: pointer; white-space: nowrap; transition: background-color .15s, color .15s, box-shadow .15s;
 }
 .tab-btn:hover { color: var(--ink); }
-.tab-btn.active { color: var(--bg); background: var(--ink); box-shadow: var(--shadow); }
+.tab-btn.active { color: #fff; background: #146F42; box-shadow: var(--shadow); } /* verde fijo (no var(--accent-teal)): así el contraste con blanco queda garantizado en los dos temas */
 .tab-panel[hidden] { display: none; }
 @media (max-width: 480px) { .tab-btn { font-size: 12.5px; padding: 10px 14px; } }
 
@@ -432,13 +432,13 @@ __CSS__
     <div class="updated-badge"><span class="pulse"></span> Actualizado el __FECHA__</div>
   </header>
 
-  <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
-  <p class="range-caption" id="rangeCaption"></p>
-
   <div class="tab-bar" id="tabBar" role="tablist">
     <button class="tab-btn active" data-tab="resumen" role="tab" aria-selected="true">Resumen</button>
     <button class="tab-btn" data-tab="costos" role="tab" aria-selected="false">Costos y recomendaciones</button>
   </div>
+
+  <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
+  <p class="range-caption" id="rangeCaption"></p>
 
   <div class="tab-panel" id="tab-resumen" role="tabpanel">
 
