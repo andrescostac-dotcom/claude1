@@ -236,8 +236,8 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .filter-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .range-caption { font-size: 12px; color: var(--ink-muted); margin: 0 0 24px; font-family: "IBM Plex Mono", monospace; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 28px; }
-@media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+@media (max-width: 1080px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 640px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
 .kpi-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; margin: 0 0 10px; }
@@ -612,12 +612,18 @@ function render(rangeKey) {
   // Meta, cuántas terminaron siendo un lead con visita en Kommo.
   const waConvRate = whatsappCur.conversations ? curAgg.qualified / whatsappCur.conversations * 100 : null;
   const prevWaConvRate = whatsappPrev.conversations ? prevAgg.qualified / whatsappPrev.conversations * 100 : null;
+  // Costo por visita: toda la inversión de Meta del período (no solo WhatsApp) dividida por
+  // los leads con visita — cuánto sale, en total, conseguir una visita.
+  const costPerVisitCur = curAgg.qualified ? curMeta.spend / curAgg.qualified : null;
+  const costPerVisitPrev = prevAgg.qualified ? prevMeta.spend / prevAgg.qualified : null;
 
   const kpis = [
     { label: 'Leads generados', value: fmtInt(curAgg.total), badge: badge(curAgg.total, prevAgg.total, true),
       sub: `${fmtInt(curAgg.qualified)} con visita · ${fmtInt(noVisit)} sin visita` },
     { label: 'Leads con visita', value: fmtInt(curAgg.qualified), badge: badge(curAgg.qualified, prevAgg.qualified, true),
       sub: `${fmtPct(qualRate)} del total · visita, 2da reunión, negociación o ganado` },
+    { label: 'Costo por visita', value: costPerVisitCur === null ? '—' : fmtARS(costPerVisitCur), badge: costPerVisitCur === null ? '' : badge(costPerVisitCur, costPerVisitPrev, false),
+      sub: 'inversión total en Meta Ads / leads con visita' },
     { label: 'Tasa de conversión (visitas)', value: fmtPct(qualRate), badge: qualRate === null ? '' : badge(qualRate, prevQualRate, true),
       sub: 'leads con visita / total de leads' },
     { label: 'Tasa de conversión (WhatsApp)', value: fmtPct(waConvRate), badge: waConvRate === null ? '' : badge(waConvRate, prevWaConvRate, true),
