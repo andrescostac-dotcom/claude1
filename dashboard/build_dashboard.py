@@ -7,7 +7,24 @@ XLSX_PATH = os.path.join(BASE, "claude_dashboard.xlsx")
 WON_ID, LOST_ID = 142, 143
 QUALIFIED_IDS = [105609867, 109532768, 105671691, 105671695, WON_ID]  # visita-reunion, reunion realizada, 2da reunion, negociacion, + ganados
 
-ADSET_TO_DEV = {"FAMILIA_CH": "Chubut", "FAMILIA_SI": "Simón Iriondo", "FAMILIA_MIS": "Misiones"}
+ADSET_TO_DEV = {"FAMILIA_CH": "Chubut", "FAMILIA_SI": "Simón Iriondo", "FAMILIA_MIS": "Misiones",
+                "FAMILIA_3FEB": "3 de Febrero Lomas"}
+
+# Confirmado con el usuario (22/8): el UTM Content que guarda Kommo no es el mismo string que
+# el nombre del adset en Meta, pero corresponde 1 a 1 (o varias variantes de creatividad -> 1
+# adset). Mapeo manual para poder cruzar leads/visitas con el gasto real de ese adset.
+# "{{adset.name}}" queda deliberadamente afuera: es un parámetro UTM mal configurado en Meta
+# Ads Manager (el macro no se resolvió), no hay forma de saber a qué adset correspondía.
+UTM_CONTENT_TO_ADSET = {
+    "Chubut": "FAMILIA_CH",
+    "Chubut_REEL": "FAMILIA_CH",
+    "Simon de Iriondo": "FAMILIA_SI",
+    "Simon de Iriondo_REEL": "FAMILIA_SI",
+    "REEL_MISIONES": "FAMILIA_MIS",
+    "REEL_MISIONES_2": "FAMILIA_MIS",
+    "FAMILIA": "Prueba: FAMILIA",
+    "3 de Febrero_corto": "FAMILIA_3FEB",
+}
 TAG_ALIASES = {"Difusion Misiones": "Misiones"}
 EXCLUDE_TAGS = ["Difusión", "Follow-up 1", "JN", "WA", "Interes Futuro", "Apta Credito",
                 "Presu menos 300", "Barrio Cerrado", "Inmobiliaria"]
@@ -144,6 +161,7 @@ payload = {
     "lost_id": LOST_ID,
     "qualified_ids": QUALIFIED_IDS,
     "adset_to_dev": ADSET_TO_DEV,
+    "utm_content_to_adset": UTM_CONTENT_TO_ADSET,
     "tag_aliases": TAG_ALIASES,
     "exclude_tags": EXCLUDE_TAGS,
     "result_label": RESULT_LABEL,
@@ -348,13 +366,13 @@ __CSS__
 
   <div class="panel wide-panel">
     <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
-    <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *con visita y costo/visita solo cruzan cuando el UTM Content del lead en Kommo coincide con el nombre del conjunto de anuncios</p>
+    <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios · *con visita y costo/visita resuelven el UTM Content de cada lead en Kommo al conjunto de anuncios real (mapeo manual confirmado) — quedan afuera los leads con UTM sin resolver</p>
     <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
   </div>
 
   <div class="panel wide-panel">
     <h2>Leads por UTM (Campaign × Content)</h2>
-    <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). *La inversión solo se cruza cuando el UTM Content coincide exactamente con el nombre de un conjunto de anuncios en Meta.</p>
+    <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). El costo por adset (Meta no lo da por creatividad/UTM) está en la tabla de WhatsApp por grupo de anuncios, abajo.</p>
     <div class="table-scroll"><table class="data-table" id="utmTable"></table></div>
   </div>
 
@@ -487,16 +505,26 @@ function aggregateUtm(leads) {
   return Object.values(byUtm);
 }
 
+function resolveAdset(utmContent) {
+  // El UTM Content que guarda Kommo no es literalmente el nombre del adset en Meta (distintas
+  // variantes de creatividad comparten un mismo adset) — DATA.utm_content_to_adset es el mapeo
+  // manual confirmado para resolverlo. Sin mapeo, se intenta el nombre tal cual (por si alguna
+  // vez coincide directo).
+  return DATA.utm_content_to_adset[utmContent] || utmContent;
+}
+
 function leadsByUtmContent(leads) {
-  // Leads (y leads con visita) agrupados por utm_content — se usa para cruzar contra el
-  // nombre del conjunto de anuncios de Meta (adset_name) y sacar costo por visita por adset.
+  // Leads (y leads con visita) agrupados por conjunto de anuncios REAL de Meta (resolviendo el
+  // UTM Content de cada lead vía resolveAdset) — así "Chubut" + "Chubut_REEL" suman juntos
+  // sobre FAMILIA_CH en vez de partir el gasto de ese adset en dos.
   const byContent = {};
   for (const l of leads) {
     if (!l.utm_content) continue;
-    const c = byContent[l.utm_content] || { leads: 0, qualified: 0 };
+    const key = resolveAdset(l.utm_content);
+    const c = byContent[key] || { leads: 0, qualified: 0 };
     c.leads++;
     if (DATA.qualified_ids.includes(l.status_id)) c.qualified++;
-    byContent[l.utm_content] = c;
+    byContent[key] = c;
   }
   return byContent;
 }
@@ -742,23 +770,25 @@ function render(rangeKey) {
         <td>${fmtInt(waTotalVisits)}</td><td>${waTotalVisits ? fmtARS(waTotalSpend / waTotalVisits) : '—'}</td></tr>
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin conversaciones en este período.</td></tr></tbody>`;
 
-  // ---- Leads por UTM (campaign x content), cruzado con gasto de Meta cuando el UTM
-  // Content coincide con el nombre de un conjunto de anuncios ----
+  // ---- Leads por UTM (campaign x content) ----
+  // El gasto de Meta solo se puede pedir a nivel de adset (no por creatividad/UTM Content), así
+  // que mostrarlo acá, por fila, duplicaría el mismo gasto entre "Chubut" y "Chubut_REEL" — por
+  // eso esta tabla se queda en leads/visitas, y muestra a qué adset real resuelve cada UTM
+  // Content. El costo real por adset está en la tabla de "Conversaciones de WhatsApp" de abajo.
   const utmRows = aggregateUtm(curLeads).sort((a, b) => b.leads - a.leads);
   document.getElementById('utmTable').innerHTML = utmRows.length ? `
-    <thead><tr><th>UTM Campaign</th><th>UTM Content</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th><th>Inversión Meta*</th><th>Costo / lead*</th></tr></thead>
+    <thead><tr><th>UTM Campaign</th><th>UTM Content</th><th>Conjunto de anuncios (Meta)</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th></tr></thead>
     <tbody>
       ${utmRows.map(u => {
-        const adset = curMeta.byAdset[u.content];
-        const spend = adset ? adset.spend : null;
+        const resolved = u.content === '(sin UTM)' ? null : resolveAdset(u.content);
+        const matched = resolved && curMeta.byAdset[resolved];
         return `<tr>
           <td class="label-cell">${u.campaign}</td>
           <td class="label-cell">${u.content}</td>
+          <td>${matched ? resolved : '<span class="no-data">sin resolver</span>'}</td>
           <td>${fmtInt(u.leads)}</td>
           <td>${fmtInt(u.qualified)}</td>
           <td>${u.leads ? fmtPct(u.qualified / u.leads * 100, 0) : '—'}</td>
-          <td>${spend != null ? fmtARS(spend) : '<span class="no-data">sin match en Meta</span>'}</td>
-          <td>${spend != null && u.leads ? fmtARS(spend / u.leads) : '—'}</td>
         </tr>`;
       }).join('')}
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin leads en este período.</td></tr></tbody>`;
