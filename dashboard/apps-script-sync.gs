@@ -61,6 +61,26 @@ function syncAll() {
 
 function canonicalTag(t) { return TAG_ALIASES[t] || t; }
 
+// Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
+// los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
+// primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
+// como campos personalizados llamados "UTM Campaign" / "UTM Content" (o utm_campaign /
+// utm_content según cómo esté configurada la cuenta) — por eso el match es flexible.
+function extractCustomField(customFields, patterns) {
+  if (!customFields) return '';
+  for (const f of customFields) {
+    const name = String(f.field_name || '').toLowerCase().replace(/[\s_-]/g, '');
+    const code = String(f.field_code || '').toLowerCase().replace(/[\s_-]/g, '');
+    for (const p of patterns) {
+      if (name.indexOf(p) !== -1 || code.indexOf(p) !== -1) {
+        const v = f.values && f.values[0] && f.values[0].value;
+        if (v) return String(v);
+      }
+    }
+  }
+  return '';
+}
+
 function syncKommoLeads() {
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
@@ -85,6 +105,8 @@ function syncKommoLeads() {
     for (const l of leads) {
       const rawTags = (l._embedded && l._embedded.tags || []).map(t => t.name);
       const devTags = [...new Set(rawTags.filter(t => !EXCLUDE_TAGS.includes(t)).map(canonicalTag))];
+      const utmCampaign = extractCustomField(l.custom_fields_values, ['utmcampaign']);
+      const utmContent = extractCustomField(l.custom_fields_values, ['utmcontent']);
       rows.push([
         l.id,
         new Date(l.created_at * 1000),
@@ -95,6 +117,8 @@ function syncKommoLeads() {
         l.status_id === LOST_ID ? 1 : 0,
         devTags.join(', '),
         l.price || 0,
+        utmCampaign,
+        utmContent,
       ]);
     }
     if (!data._links || !data._links.next) break;
@@ -104,7 +128,7 @@ function syncKommoLeads() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Leads') || ss.insertSheet('Leads');
   sheet.clear();
-  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price']);
+  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content']);
   if (rows.length) sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   sheet.getRange(2, 2, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
 }

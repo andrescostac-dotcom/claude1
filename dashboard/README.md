@@ -69,6 +69,37 @@
   usuario vuelva a pegar el `.gs` actualizado en su Apps Script y corra
   `syncAll` una vez.
 
+## Cambios (22/8, ronda 2)
+
+- **KPIs**: "Leads generados" ahora muestra con/sin visita en vez de
+  ganado/perdido literal de Kommo. Se agregaron "Tasa de conversión
+  (visitas)" (= leads con visita / total) y "Tasa de conversión (WhatsApp)"
+  (= leads con visita / conversaciones de WhatsApp de Meta) — 6 KPIs en
+  total.
+- **Embudo**: los pills "logrado con éxito" / "venta perdida" (que casi no
+  se usan como estados literales en Kommo) se reemplazaron por "con visita"
+  / "sin visita", calculados con la misma definición que el resto del
+  dashboard (`QUALIFIED_IDS`).
+- **UTM**: `apps-script-sync.gs` ahora extrae `utm_campaign` y `utm_content`
+  de `custom_fields_values` de cada lead en Kommo (matching flexible por
+  nombre/código de campo, insensible a mayúsculas/espacios). Nueva tabla
+  "Leads por UTM (Campaign × Content)": leads, con visita, tasa de visita, y
+  cruce con inversión de Meta cuando el `UTM Content` coincide exactamente
+  con el nombre de un conjunto de anuncios (`adset_name`). Objetivo:
+  detectar desarrollos como "3 de Febrero Lomas" que no tienen conjunto de
+  anuncios propio en `ADSET_TO_DEV` pero sí quedan identificados por UTM.
+  **Requiere volver a correr el Apps Script** — hasta que el usuario lo
+  haga, todos los leads existentes van a aparecer como "(sin UTM)" porque
+  esa columna no existía antes en la Sheet.
+  - Riesgo conocido: no verifiqué en vivo que Kommo efectivamente tenga
+    campos personalizados llamados "UTM Campaign"/"UTM Content" en esta
+    cuenta (no hay acceso a la API desde este entorno) — el matching es
+    flexible pero si el nombre real difiere del patrón `utmcampaign`/
+    `utmcontent` (sin espacios/guiones/mayúsculas) no va a encontrarlos. Si
+    después de correr el script la tabla sigue en "(sin UTM)", hay que
+    revisar el nombre exacto del campo en Kommo (Ajustes → Campos
+    personalizados → Leads) y ajustar `extractCustomField`.
+
 ## Nota sobre el orden del funnel
 
 `build_dashboard.py` define `STATUS_ORDER_HINT`: un orden inferido de los

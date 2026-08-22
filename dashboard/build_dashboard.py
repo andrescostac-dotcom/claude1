@@ -42,16 +42,31 @@ STATUS_ORDER_HINT = [
 wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
 
 # ---- Leads ----
+# Lookup por nombre de columna (no por posición) para que agregar/reordenar columnas en el
+# Sheet (p.ej. utm_campaign / utm_content) no rompa el parser.
 ws = wb["Leads"]
 rows = list(ws.iter_rows(values_only=True))
 header, lead_rows = rows[0], [r for r in rows[1:] if r[0] is not None]
+col = {name: i for i, name in enumerate(header)}
+
+
+def get(r, name, default=None):
+    i = col.get(name)
+    return r[i] if i is not None and i < len(r) else default
+
 
 leads_out = []
 statuses = {}
 first_seen_status_order = []
 for r in lead_rows:
-    lid, created_at, status_id, status_name, calificado, ganado, perdido, desarrollos, price = r
-    status_id = int(status_id)
+    lid = get(r, "id")
+    created_at = get(r, "created_at")
+    status_id = int(get(r, "status_id"))
+    status_name = get(r, "status_name")
+    desarrollos = get(r, "desarrollos")
+    price = get(r, "price")
+    utm_campaign = (get(r, "utm_campaign") or "").strip()
+    utm_content = (get(r, "utm_content") or "").strip()
     if status_id not in statuses:
         statuses[status_id] = status_name
         first_seen_status_order.append(status_id)
@@ -66,6 +81,8 @@ for r in lead_rows:
         "price": price or 0,
         "created_at": created_epoch,
         "tags": tags,
+        "utm_campaign": utm_campaign,
+        "utm_content": utm_content,
     })
 
 status_order = {}
@@ -219,8 +236,8 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .filter-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .range-caption { font-size: 12px; color: var(--ink-muted); margin: 0 0 24px; font-family: "IBM Plex Mono", monospace; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 28px; }
-@media (max-width: 1080px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+.kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 28px; }
+@media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 640px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
 .kpi-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; margin: 0 0 10px; }
@@ -333,6 +350,12 @@ __CSS__
     <h2>Conversaciones de WhatsApp por grupo de anuncios</h2>
     <p class="panel-sub">Conversaciones de WhatsApp iniciadas en Meta Ads (campañas con objetivo de conversión), por conjunto de anuncios</p>
     <div class="table-scroll"><table class="data-table" id="whatsappTable"></table></div>
+  </div>
+
+  <div class="panel wide-panel">
+    <h2>Leads por UTM (Campaign × Content)</h2>
+    <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). *La inversión solo se cruza cuando el UTM Content coincide exactamente con el nombre de un conjunto de anuncios en Meta.</p>
+    <div class="table-scroll"><table class="data-table" id="utmTable"></table></div>
   </div>
 
   <div class="panel wide-panel">
@@ -451,6 +474,19 @@ function filterLeads(startKey, endKey) {
 
 function canonicalTag(t) { return DATA.tag_aliases[t] || t; }
 
+function aggregateUtm(leads) {
+  const byUtm = {};
+  for (const l of leads) {
+    const campaign = l.utm_campaign || '(sin UTM)';
+    const content = l.utm_content || '(sin UTM)';
+    const key = campaign + '::' + content;
+    if (!byUtm[key]) byUtm[key] = { campaign, content, leads: 0, qualified: 0 };
+    byUtm[key].leads++;
+    if (DATA.qualified_ids.includes(l.status_id)) byUtm[key].qualified++;
+  }
+  return Object.values(byUtm);
+}
+
 function aggregateWhatsappByAdset(rows) {
   // Conversaciones de WhatsApp iniciadas en Meta, por conjunto de anuncios —
   // solo campañas con objetivo de conversión (OUTCOME_LEADS = WhatsApp).
@@ -564,20 +600,28 @@ function render(rangeKey) {
     : `${keyToLabel(r.start)} – ${keyToLabel(r.end)} · vs. ${keyToLabel(r.prevStart)} – ${keyToLabel(r.prevEnd)}`;
 
   // ---- KPIs ----
-  const convRate = (curAgg.won + curAgg.lost) ? curAgg.won / (curAgg.won + curAgg.lost) * 100 : null;
-  const prevConvRate = (prevAgg.won + prevAgg.lost) ? prevAgg.won / (prevAgg.won + prevAgg.lost) * 100 : null;
+  // "Con visita" / "sin visita" reemplaza al ganado/perdido literal de Kommo (casi no se usan
+  // esos 2 estados) — acá "ganado" = llegó a hacer una visita, "perdido" = el resto.
+  const noVisit = curAgg.total - curAgg.qualified;
   const qualRate = curAgg.total ? curAgg.qualified / curAgg.total * 100 : null;
+  const prevQualRate = prevAgg.total ? prevAgg.qualified / prevAgg.total * 100 : null;
   const whatsappCur = curMeta.byCampaign['WHATSAPP'] || { spend: 0, conversations: 0 };
   const whatsappPrev = prevMeta.byCampaign['WHATSAPP'] || { spend: 0, conversations: 0 };
   const cpcCur = whatsappCur.conversations ? whatsappCur.spend / whatsappCur.conversations : null;
+  // Tasa de conversión sobre conversaciones de WhatsApp: de las conversaciones que arrancó
+  // Meta, cuántas terminaron siendo un lead con visita en Kommo.
+  const waConvRate = whatsappCur.conversations ? curAgg.qualified / whatsappCur.conversations * 100 : null;
+  const prevWaConvRate = whatsappPrev.conversations ? prevAgg.qualified / whatsappPrev.conversations * 100 : null;
 
   const kpis = [
     { label: 'Leads generados', value: fmtInt(curAgg.total), badge: badge(curAgg.total, prevAgg.total, true),
-      sub: `${fmtInt(curAgg.won)} ganados · ${fmtInt(curAgg.lost)} perdidos` },
+      sub: `${fmtInt(curAgg.qualified)} con visita · ${fmtInt(noVisit)} sin visita` },
     { label: 'Leads con visita', value: fmtInt(curAgg.qualified), badge: badge(curAgg.qualified, prevAgg.qualified, true),
       sub: `${fmtPct(qualRate)} del total · visita, 2da reunión, negociación o ganado` },
-    { label: 'Tasa de conversión', value: fmtPct(convRate), badge: convRate === null ? '' : badge(convRate, prevConvRate, true),
-      sub: 'ganados / (ganados + perdidos)' },
+    { label: 'Tasa de conversión (visitas)', value: fmtPct(qualRate), badge: qualRate === null ? '' : badge(qualRate, prevQualRate, true),
+      sub: 'leads con visita / total de leads' },
+    { label: 'Tasa de conversión (WhatsApp)', value: fmtPct(waConvRate), badge: waConvRate === null ? '' : badge(waConvRate, prevWaConvRate, true),
+      sub: waConvRate === null ? 'sin conversaciones en el período' : `${fmtInt(curAgg.qualified)} con visita / ${fmtInt(whatsappCur.conversations)} conversaciones` },
     { label: 'Inversión en Meta Ads', value: fmtARS(curMeta.spend), badge: badge(curMeta.spend, prevMeta.spend, null),
       sub: `${fmtInt(curMeta.impressions)} impresiones` },
     { label: 'Conversaciones de WhatsApp', value: fmtInt(whatsappCur.conversations), badge: badge(whatsappCur.conversations, whatsappPrev.conversations, true),
@@ -604,8 +648,8 @@ function render(rangeKey) {
   }).join('');
   document.getElementById('funnelRows').innerHTML = funnelHtml || '<p class="empty-note">Sin leads en este período.</p>';
   document.getElementById('wonLost').innerHTML = `
-    <span class="pill won"><span class="dotp"></span>${fmtInt(curAgg.won)} logrados con éxito</span>
-    <span class="pill lost"><span class="dotp"></span>${fmtInt(curAgg.lost)} venta perdida</span>`;
+    <span class="pill won"><span class="dotp"></span>${fmtInt(curAgg.qualified)} con visita</span>
+    <span class="pill lost"><span class="dotp"></span>${fmtInt(noVisit)} sin visita</span>`;
 
   // ---- Campaigns (sorted by spend desc) ----
   const OBJ_LABEL = { OUTCOME_LEADS: 'Conversión · WhatsApp', OUTCOME_AWARENESS: 'Alcance / awareness', OUTCOME_TRAFFIC: 'Tráfico', OUTCOME_ENGAGEMENT: 'Interacción' };
@@ -669,6 +713,27 @@ function render(rangeKey) {
       <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(waTotalConv)}</td><td>100%</td>
         <td>${fmtARS(waTotalSpend)}</td><td>${waTotalConv ? fmtARS(waTotalSpend / waTotalConv) : '—'}</td></tr>
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin conversaciones en este período.</td></tr></tbody>`;
+
+  // ---- Leads por UTM (campaign x content), cruzado con gasto de Meta cuando el UTM
+  // Content coincide con el nombre de un conjunto de anuncios ----
+  const utmRows = aggregateUtm(curLeads).sort((a, b) => b.leads - a.leads);
+  document.getElementById('utmTable').innerHTML = utmRows.length ? `
+    <thead><tr><th>UTM Campaign</th><th>UTM Content</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th><th>Inversión Meta*</th><th>Costo / lead*</th></tr></thead>
+    <tbody>
+      ${utmRows.map(u => {
+        const adset = curMeta.byAdset[u.content];
+        const spend = adset ? adset.spend : null;
+        return `<tr>
+          <td class="label-cell">${u.campaign}</td>
+          <td class="label-cell">${u.content}</td>
+          <td>${fmtInt(u.leads)}</td>
+          <td>${fmtInt(u.qualified)}</td>
+          <td>${u.leads ? fmtPct(u.qualified / u.leads * 100, 0) : '—'}</td>
+          <td>${spend != null ? fmtARS(spend) : '<span class="no-data">sin match en Meta</span>'}</td>
+          <td>${spend != null && u.leads ? fmtARS(spend / u.leads) : '—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin leads en este período.</td></tr></tbody>`;
 
   // ---- Meta full panel ----
   const metaRows = Object.entries(curMeta.byCampaign).sort((a, b) => b[1].spend - a[1].spend);
