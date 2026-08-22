@@ -6,6 +6,9 @@ XLSX_PATH = os.path.join(BASE, "claude_dashboard.xlsx")
 
 WON_ID, LOST_ID = 142, 143
 QUALIFIED_IDS = [105609867, 109532768, 105671691, 105671695, WON_ID]  # visita-reunion, reunion realizada, 2da reunion, negociacion, + ganados
+# "Visita calificada" (definido con el usuario, 22/8): un sub-conjunto más estricto de
+# QUALIFIED_IDS — solo las etapas avanzadas, sin contar la primera visita/reunión.
+QUALIFIED_VISIT_IDS = [105671691, 105671695, WON_ID]  # 2da reunion, negociacion, + ganados
 
 ADSET_TO_DEV = {"FAMILIA_CH": "Chubut", "FAMILIA_SI": "Simón Iriondo", "FAMILIA_MIS": "Misiones",
                 "FAMILIA_3FEB": "3 de Febrero Lomas"}
@@ -160,6 +163,7 @@ payload = {
     "won_id": WON_ID,
     "lost_id": LOST_ID,
     "qualified_ids": QUALIFIED_IDS,
+    "qualified_visit_ids": QUALIFIED_VISIT_IDS,
     "adset_to_dev": ADSET_TO_DEV,
     "utm_content_to_adset": UTM_CONTENT_TO_ADSET,
     "tag_aliases": TAG_ALIASES,
@@ -254,10 +258,13 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .filter-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .range-caption { font-size: 12px; color: var(--ink-muted); margin: 0 0 24px; font-family: "IBM Plex Mono", monospace; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
-@media (max-width: 1080px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 640px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
+.kpi-groups { margin-bottom: 14px; }
+.kpi-section { margin-bottom: 22px; }
+.kpi-section-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.kpi-section-title { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); font-weight: 500; white-space: nowrap; }
+.kpi-section-rule { flex: 1; height: 1px; background: var(--border); }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; box-shadow: var(--shadow); border-top: 3px solid var(--kpi-accent, var(--border)); }
 .kpi-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; margin: 0 0 10px; }
 .kpi-value-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .kpi-value { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 28px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; line-height: 1.05; }
@@ -307,11 +314,16 @@ table.data-table td { padding: 10px 10px; border-bottom: 1px solid var(--border)
 table.data-table td.label-cell { font-weight: 600; white-space: normal; font-variant-numeric: initial; }
 table.data-table tr:last-child td { border-bottom: none; }
 table.data-table tr.total-row td { font-weight: 700; border-top: 1px solid var(--border); }
+table.data-table tbody tr:hover td { background: var(--surface-2); }
 .status-pill { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 7px; border-radius: 100px; }
 .status-pill.active { color: var(--good); background: color-mix(in srgb, var(--good) 16%, transparent); }
 .status-pill.paused { color: var(--ink-muted); background: var(--surface-2); }
 .result-caption { display: block; font-size: 10.5px; color: var(--ink-muted); font-family: "Work Sans", sans-serif; font-weight: 400; }
 .no-data { color: var(--ink-muted); }
+.resolved-pill { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 100px;
+  color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 14%, transparent); white-space: nowrap; }
+.resolved-pill.unresolved { color: var(--ink-muted); background: var(--surface-2); font-weight: 500;
+  font-style: italic; border: 1px dashed var(--border); }
 
 footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--ink-muted); }
 """
@@ -342,7 +354,7 @@ __CSS__
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
   <p class="range-caption" id="rangeCaption"></p>
 
-  <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="kpi-groups" id="kpiGrid"></div>
 
   <div class="panels">
     <div class="panel">
@@ -372,7 +384,7 @@ __CSS__
 
   <div class="panel wide-panel">
     <h2>Leads por UTM (Campaign × Content)</h2>
-    <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). El costo por adset (Meta no lo da por creatividad/UTM) está en la tabla de WhatsApp por grupo de anuncios, abajo.</p>
+    <p class="panel-sub">Los UTM se guardan en Kommo por lead, tal como llegaron del clic en el anuncio — permiten ver el detalle real de origen incluso para desarrollos sin conjunto de anuncios propio (p. ej. 3 de Febrero Lomas). *Los costos son a nivel del conjunto de anuncios que resuelve el UTM Content — Meta no da spend por creatividad, así que se repiten en las filas que comparten adset.</p>
     <div class="table-scroll"><table class="data-table" id="utmTable"></table></div>
   </div>
 
@@ -498,9 +510,10 @@ function aggregateUtm(leads) {
     const campaign = l.utm_campaign || '(sin UTM)';
     const content = l.utm_content || '(sin UTM)';
     const key = campaign + '::' + content;
-    if (!byUtm[key]) byUtm[key] = { campaign, content, leads: 0, qualified: 0 };
+    if (!byUtm[key]) byUtm[key] = { campaign, content, leads: 0, qualified: 0, qualifiedVisit: 0 };
     byUtm[key].leads++;
     if (DATA.qualified_ids.includes(l.status_id)) byUtm[key].qualified++;
+    if (DATA.qualified_visit_ids.includes(l.status_id)) byUtm[key].qualifiedVisit++;
   }
   return Object.values(byUtm);
 }
@@ -514,16 +527,17 @@ function resolveAdset(utmContent) {
 }
 
 function leadsByUtmContent(leads) {
-  // Leads (y leads con visita) agrupados por conjunto de anuncios REAL de Meta (resolviendo el
-  // UTM Content de cada lead vía resolveAdset) — así "Chubut" + "Chubut_REEL" suman juntos
-  // sobre FAMILIA_CH en vez de partir el gasto de ese adset en dos.
+  // Leads (visita, visita calificada) agrupados por conjunto de anuncios REAL de Meta
+  // (resolviendo el UTM Content de cada lead vía resolveAdset) — así "Chubut" + "Chubut_REEL"
+  // suman juntos sobre FAMILIA_CH en vez de partir el gasto de ese adset en dos.
   const byContent = {};
   for (const l of leads) {
     if (!l.utm_content) continue;
     const key = resolveAdset(l.utm_content);
-    const c = byContent[key] || { leads: 0, qualified: 0 };
+    const c = byContent[key] || { leads: 0, visit: 0, qualifiedVisit: 0 };
     c.leads++;
-    if (DATA.qualified_ids.includes(l.status_id)) c.qualified++;
+    if (DATA.qualified_ids.includes(l.status_id)) c.visit++;
+    if (DATA.qualified_visit_ids.includes(l.status_id)) c.qualifiedVisit++;
     byContent[key] = c;
   }
   return byContent;
@@ -562,12 +576,13 @@ function aggregateMeta(rows) {
 
 function aggregateLeads(leads) {
   const byStatus = {}; const byTag = {};
-  let won = 0, lost = 0, qualified = 0;
+  let won = 0, lost = 0, qualified = 0, qualifiedVisit = 0;
   for (const l of leads) {
     byStatus[l.status_id] = (byStatus[l.status_id] || 0) + 1;
     if (l.status_id === DATA.won_id) won++;
     if (l.status_id === DATA.lost_id) lost++;
     if (DATA.qualified_ids.includes(l.status_id)) qualified++;
+    if (DATA.qualified_visit_ids.includes(l.status_id)) qualifiedVisit++;
     const seen = new Set();
     for (const t of l.tags) {
       if (DATA.exclude_tags.includes(t)) continue;
@@ -577,7 +592,7 @@ function aggregateLeads(leads) {
       byTag[c] = (byTag[c] || 0) + 1;
     }
   }
-  return { total: leads.length, byStatus, byTag, won, lost, qualified };
+  return { total: leads.length, byStatus, byTag, won, lost, qualified, qualifiedVisit };
 }
 
 function devLeadsByTagAndQualified(leads) {
@@ -647,39 +662,68 @@ function render(rangeKey) {
   const noVisit = curAgg.total - curAgg.qualified;
   const qualRate = curAgg.total ? curAgg.qualified / curAgg.total * 100 : null;
   const prevQualRate = prevAgg.total ? prevAgg.qualified / prevAgg.total * 100 : null;
+  // "Visita calificada" (22/8): sub-conjunto más estricto de "con visita" — solo 2da reunión,
+  // negociación o ganado (sin contar la primera visita/reunión).
+  const qualVisitRate = curAgg.total ? curAgg.qualifiedVisit / curAgg.total * 100 : null;
+  const prevQualVisitRate = prevAgg.total ? prevAgg.qualifiedVisit / prevAgg.total * 100 : null;
   const whatsappCur = curMeta.byCampaign['WHATSAPP'] || { spend: 0, conversations: 0 };
   const whatsappPrev = prevMeta.byCampaign['WHATSAPP'] || { spend: 0, conversations: 0 };
   const cpcCur = whatsappCur.conversations ? whatsappCur.spend / whatsappCur.conversations : null;
+  const cpcPrev = whatsappPrev.conversations ? whatsappPrev.spend / whatsappPrev.conversations : null;
   // Tasa de conversión sobre conversaciones de WhatsApp: de las conversaciones que arrancó
   // Meta, cuántas terminaron siendo un lead con visita en Kommo.
   const waConvRate = whatsappCur.conversations ? curAgg.qualified / whatsappCur.conversations * 100 : null;
   const prevWaConvRate = whatsappPrev.conversations ? prevAgg.qualified / whatsappPrev.conversations * 100 : null;
-  // Costo por visita: toda la inversión de Meta del período (no solo WhatsApp) dividida por
-  // los leads con visita — cuánto sale, en total, conseguir una visita.
+  // Costo por visita / visita calificada: toda la inversión de Meta del período (no solo
+  // WhatsApp) dividida por los leads con visita — cuánto sale, en total, conseguir una.
   const costPerVisitCur = curAgg.qualified ? curMeta.spend / curAgg.qualified : null;
   const costPerVisitPrev = prevAgg.qualified ? prevMeta.spend / prevAgg.qualified : null;
+  const costPerQualVisitCur = curAgg.qualifiedVisit ? curMeta.spend / curAgg.qualifiedVisit : null;
+  const costPerQualVisitPrev = prevAgg.qualifiedVisit ? prevMeta.spend / prevAgg.qualifiedVisit : null;
 
-  const kpis = [
-    { label: 'Leads generados', value: fmtInt(curAgg.total), badge: badge(curAgg.total, prevAgg.total, true),
-      sub: `${fmtInt(curAgg.qualified)} con visita · ${fmtInt(noVisit)} sin visita` },
-    { label: 'Leads con visita', value: fmtInt(curAgg.qualified), badge: badge(curAgg.qualified, prevAgg.qualified, true),
-      sub: `${fmtPct(qualRate)} del total · visita, 2da reunión, negociación o ganado` },
-    { label: 'Costo por visita', value: costPerVisitCur === null ? '—' : fmtARS(costPerVisitCur), badge: costPerVisitCur === null ? '' : badge(costPerVisitCur, costPerVisitPrev, false),
-      sub: 'inversión total en Meta Ads / leads con visita' },
-    { label: 'Tasa de conversión (visitas)', value: fmtPct(qualRate), badge: qualRate === null ? '' : badge(qualRate, prevQualRate, true),
-      sub: 'leads con visita / total de leads' },
-    { label: 'Tasa de conversión (WhatsApp)', value: fmtPct(waConvRate), badge: waConvRate === null ? '' : badge(waConvRate, prevWaConvRate, true),
-      sub: waConvRate === null ? 'sin conversaciones en el período' : `${fmtInt(curAgg.qualified)} con visita / ${fmtInt(whatsappCur.conversations)} conversaciones` },
-    { label: 'Inversión en Meta Ads', value: fmtARS(curMeta.spend), badge: badge(curMeta.spend, prevMeta.spend, null),
-      sub: `${fmtInt(curMeta.impressions)} impresiones` },
-    { label: 'Conversaciones de WhatsApp', value: fmtInt(whatsappCur.conversations), badge: badge(whatsappCur.conversations, whatsappPrev.conversations, true),
-      sub: cpcCur === null ? 'Meta Ads · WhatsApp' : `${fmtARS(cpcCur)} costo por conversación` },
+  const kpiGroups = [
+    { title: 'Leads', accent: 'var(--accent-teal)', items: [
+      { label: 'Leads generados', value: fmtInt(curAgg.total), badge: badge(curAgg.total, prevAgg.total, true),
+        sub: `${fmtInt(curAgg.qualified)} con visita · ${fmtInt(noVisit)} sin visita` },
+      { label: 'Leads con visita', value: fmtInt(curAgg.qualified), badge: badge(curAgg.qualified, prevAgg.qualified, true),
+        sub: `${fmtPct(qualRate)} del total · visita, reunión, negociación o ganado` },
+      { label: 'Leads con visita calificada', value: fmtInt(curAgg.qualifiedVisit), badge: badge(curAgg.qualifiedVisit, prevAgg.qualifiedVisit, true),
+        sub: `${fmtPct(qualVisitRate)} del total · 2da reunión, negociación o ganado` },
+    ]},
+    { title: 'Tasas de conversión', accent: 'var(--accent-blue)', items: [
+      { label: 'Tasa de conversión (visita)', value: fmtPct(qualRate), badge: qualRate === null ? '' : badge(qualRate, prevQualRate, true),
+        sub: 'leads con visita / total de leads' },
+      { label: 'Tasa de conversión (visita calificada)', value: fmtPct(qualVisitRate), badge: qualVisitRate === null ? '' : badge(qualVisitRate, prevQualVisitRate, true),
+        sub: 'leads con visita calificada / total de leads' },
+      { label: 'Tasa de conversión (WhatsApp)', value: fmtPct(waConvRate), badge: waConvRate === null ? '' : badge(waConvRate, prevWaConvRate, true),
+        sub: waConvRate === null ? 'sin conversaciones en el período' : `${fmtInt(curAgg.qualified)} con visita / ${fmtInt(whatsappCur.conversations)} conversaciones` },
+    ]},
+    { title: 'Meta Ads', accent: 'var(--good)', items: [
+      { label: 'Inversión en Meta Ads', value: fmtARS(curMeta.spend), badge: badge(curMeta.spend, prevMeta.spend, null),
+        sub: `${fmtInt(curMeta.impressions)} impresiones` },
+      { label: 'Conversaciones de WhatsApp', value: fmtInt(whatsappCur.conversations), badge: badge(whatsappCur.conversations, whatsappPrev.conversations, true),
+        sub: 'Meta Ads · campaña de conversión' },
+    ]},
+    { title: 'Costo por resultado', accent: 'var(--ink-muted)', items: [
+      { label: 'Costo por visita', value: costPerVisitCur === null ? '—' : fmtARS(costPerVisitCur), badge: costPerVisitCur === null ? '' : badge(costPerVisitCur, costPerVisitPrev, false),
+        sub: 'inversión total en Meta Ads / leads con visita' },
+      { label: 'Costo por visita calificada', value: costPerQualVisitCur === null ? '—' : fmtARS(costPerQualVisitCur), badge: costPerQualVisitCur === null ? '' : badge(costPerQualVisitCur, costPerQualVisitPrev, false),
+        sub: 'inversión total en Meta Ads / leads con visita calificada' },
+      { label: 'Costo por conversación', value: cpcCur === null ? '—' : fmtARS(cpcCur), badge: cpcCur === null ? '' : badge(cpcCur, cpcPrev, false),
+        sub: 'inversión en WhatsApp / conversaciones' },
+    ]},
   ];
-  document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
-    <div class="kpi-card">
-      <p class="kpi-label">${k.label}</p>
-      <div class="kpi-value-row"><span class="kpi-value">${k.value}</span>${k.badge}</div>
-      <p class="kpi-sub">${k.sub}</p>
+  document.getElementById('kpiGrid').innerHTML = kpiGroups.map(g => `
+    <div class="kpi-section">
+      <div class="kpi-section-head"><span class="kpi-section-title">${g.title}</span><span class="kpi-section-rule"></span></div>
+      <div class="kpi-grid" style="--kpi-accent:${g.accent}">
+        ${g.items.map(k => `
+          <div class="kpi-card">
+            <p class="kpi-label">${k.label}</p>
+            <div class="kpi-value-row"><span class="kpi-value">${k.value}</span>${k.badge}</div>
+            <p class="kpi-sub">${k.sub}</p>
+          </div>`).join('')}
+      </div>
     </div>`).join('');
 
   // ---- Funnel (skip zero) ----
@@ -749,7 +793,7 @@ function render(rangeKey) {
   const waEntries = Object.entries(waAdsets).sort((a, b) => b[1].conversations - a[1].conversations);
   const waTotalConv = waEntries.reduce((s, [, a]) => s + a.conversations, 0);
   const waTotalSpend = waEntries.reduce((s, [, a]) => s + a.spend, 0);
-  const waTotalVisits = waEntries.reduce((s, [name]) => s + (waVisits[name]?.qualified || 0), 0);
+  const waTotalVisits = waEntries.reduce((s, [name]) => s + (waVisits[name]?.visit || 0), 0);
   document.getElementById('whatsappTable').innerHTML = waEntries.length ? `
     <thead><tr><th>Grupo de anuncios</th><th>Conversaciones</th><th>% del total</th><th>Inversión</th><th>Costo / conversación</th><th>Con visita*</th><th>Costo / visita*</th></tr></thead>
     <tbody>
@@ -761,8 +805,8 @@ function render(rangeKey) {
         <td>${waTotalConv ? fmtPct(a.conversations / waTotalConv * 100, 0) : '—'}</td>
         <td>${fmtARS(a.spend)}</td>
         <td>${a.conversations ? fmtARS(a.spend / a.conversations) : '—'}</td>
-        <td>${v ? fmtInt(v.qualified) : '<span class="no-data">sin UTM</span>'}</td>
-        <td>${v && v.qualified ? fmtARS(a.spend / v.qualified) : '—'}</td>
+        <td>${v ? fmtInt(v.visit) : '<span class="no-data">sin UTM</span>'}</td>
+        <td>${v && v.visit ? fmtARS(a.spend / v.visit) : '—'}</td>
       </tr>`;
       }).join('')}
       <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(waTotalConv)}</td><td>100%</td>
@@ -771,26 +815,58 @@ function render(rangeKey) {
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin conversaciones en este período.</td></tr></tbody>`;
 
   // ---- Leads por UTM (campaign x content) ----
-  // El gasto de Meta solo se puede pedir a nivel de adset (no por creatividad/UTM Content), así
-  // que mostrarlo acá, por fila, duplicaría el mismo gasto entre "Chubut" y "Chubut_REEL" — por
-  // eso esta tabla se queda en leads/visitas, y muestra a qué adset real resuelve cada UTM
-  // Content. El costo real por adset está en la tabla de "Conversaciones de WhatsApp" de abajo.
+  // Leads/visitas: nivel de detalle real por UTM Content (creatividad). Costo/visita, costo/lead
+  // calificado y costo/iniciar conversación: Meta solo da spend y conversaciones por ADSET, no
+  // por creatividad — así que esas 3 columnas se calculan a nivel del adset resuelto (mismo
+  // valor repetido en todas las filas que comparten adset) para no partir su gasto entre ellas.
   const utmRows = aggregateUtm(curLeads).sort((a, b) => b.leads - a.leads);
+  const utmAdsetAgg = leadsByUtmContent(curLeads); // { [adset resuelto]: {leads, visit, qualifiedVisit} }
   document.getElementById('utmTable').innerHTML = utmRows.length ? `
-    <thead><tr><th>UTM Campaign</th><th>UTM Content</th><th>Conjunto de anuncios (Meta)</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th></tr></thead>
+    <thead><tr>
+      <th>UTM Campaign</th><th>UTM Content</th><th>Conjunto de anuncios (Meta)</th>
+      <th>Leads</th><th>Con visita</th><th>Visita calificada</th>
+      <th>Costo / visita*</th><th>Costo / visita calificada*</th><th>Costo / conversación*</th>
+    </tr></thead>
     <tbody>
       ${utmRows.map(u => {
         const resolved = u.content === '(sin UTM)' ? null : resolveAdset(u.content);
-        const matched = resolved && curMeta.byAdset[resolved];
+        const metaAdset = resolved ? curMeta.byAdset[resolved] : null;
+        const agg = resolved ? utmAdsetAgg[resolved] : null;
+        const costVisit = metaAdset && agg && agg.visit ? metaAdset.spend / agg.visit : null;
+        const costQualVisit = metaAdset && agg && agg.qualifiedVisit ? metaAdset.spend / agg.qualifiedVisit : null;
+        const costConv = metaAdset && metaAdset.conversations ? metaAdset.spend / metaAdset.conversations : null;
         return `<tr>
           <td class="label-cell">${u.campaign}</td>
           <td class="label-cell">${u.content}</td>
-          <td>${matched ? resolved : '<span class="no-data">sin resolver</span>'}</td>
+          <td>${metaAdset ? `<span class="resolved-pill">${resolved}</span>` : '<span class="resolved-pill unresolved">sin resolver</span>'}</td>
           <td>${fmtInt(u.leads)}</td>
           <td>${fmtInt(u.qualified)}</td>
-          <td>${u.leads ? fmtPct(u.qualified / u.leads * 100, 0) : '—'}</td>
+          <td>${fmtInt(u.qualifiedVisit)}</td>
+          <td>${costVisit != null ? fmtARS(costVisit) : '—'}</td>
+          <td>${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
+          <td>${costConv != null ? fmtARS(costConv) : '—'}</td>
         </tr>`;
       }).join('')}
+      ${(() => {
+        // Fila de totales: suma simple para leads/visitas (son por-lead, no se duplican), pero
+        // para los $ hay que sumar el spend/conversaciones de cada adset UNA sola vez (si no,
+        // un adset compartido por 2 filas de UTM se contaría el doble).
+        const totLeads = utmRows.reduce((s, u) => s + u.leads, 0);
+        const totVisit = utmRows.reduce((s, u) => s + u.qualified, 0);
+        const totQualVisit = utmRows.reduce((s, u) => s + u.qualifiedVisit, 0);
+        const distinctAdsets = [...new Set(utmRows
+          .map(u => u.content === '(sin UTM)' ? null : resolveAdset(u.content))
+          .filter(a => a && curMeta.byAdset[a]))];
+        const totSpend = distinctAdsets.reduce((s, a) => s + curMeta.byAdset[a].spend, 0);
+        const totConv = distinctAdsets.reduce((s, a) => s + curMeta.byAdset[a].conversations, 0);
+        const totVisitMatched = distinctAdsets.reduce((s, a) => s + (utmAdsetAgg[a]?.visit || 0), 0);
+        const totQualVisitMatched = distinctAdsets.reduce((s, a) => s + (utmAdsetAgg[a]?.qualifiedVisit || 0), 0);
+        return `<tr class="total-row"><td class="label-cell">Total</td><td></td><td></td>
+          <td>${fmtInt(totLeads)}</td><td>${fmtInt(totVisit)}</td><td>${fmtInt(totQualVisit)}</td>
+          <td>${totVisitMatched ? fmtARS(totSpend / totVisitMatched) : '—'}</td>
+          <td>${totQualVisitMatched ? fmtARS(totSpend / totQualVisitMatched) : '—'}</td>
+          <td>${totConv ? fmtARS(totSpend / totConv) : '—'}</td></tr>`;
+      })()}
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin leads en este período.</td></tr></tbody>`;
 
   // ---- Meta full panel ----
