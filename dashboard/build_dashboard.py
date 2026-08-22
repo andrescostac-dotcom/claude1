@@ -375,18 +375,22 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; }
-.chart-card h3 { font-family: "Bricolage Grotesque", sans-serif; font-size: 13.5px; font-weight: 700; margin: 0 0 2px; }
-.chart-caption { font-size: 11.5px; color: var(--ink-muted); margin: 0 0 12px; line-height: 1.4; }
+.chart-card h3 { font-family: "Bricolage Grotesque", sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 3px; }
+.chart-caption { font-size: 12.5px; color: var(--ink-muted); margin: 0 0 14px; line-height: 1.45; }
 .chart-wrap { position: relative; }
 .chart-svg { width: 100%; height: auto; aspect-ratio: 480 / 150; display: block; overflow: visible; }
-.chart-line { fill: none; stroke: var(--accent-blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-line { fill: none; stroke: var(--accent-blue); stroke-width: 2.8; stroke-linejoin: round; stroke-linecap: round; }
 .chart-gridline { stroke: var(--border); stroke-width: 1; }
-.chart-axis-label { font-family: "IBM Plex Mono", monospace; font-size: 9px; fill: var(--ink-muted); }
-.chart-hover-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 2; }
-.chart-hover-dot { fill: var(--accent-blue); stroke: var(--surface-2); stroke-width: 2; }
+/* Ojo: este texto vive DENTRO del <svg viewBox="0 0 480 150">, que se achica bastante al
+   dibujarse en pantalla (una chart-card real mide ~270-380px de ancho, no 480) — por eso el
+   font-size acá tiene que ser bastante más grande que el resto de la página para que en
+   pantalla termine leyéndose a un tamaño normal, no diminuto. */
+.chart-axis-label { font-family: "IBM Plex Mono", monospace; font-size: 20px; font-weight: 500; fill: var(--ink-muted); }
+.chart-hover-line { stroke: var(--ink-muted); stroke-width: 1.4; stroke-dasharray: 3 3; }
+.chart-hover-dot { fill: var(--accent-blue); stroke: var(--surface-2); stroke-width: 2.5; }
 .chart-tooltip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
-  font-family: "IBM Plex Mono", monospace; font-size: 11px; padding: 4px 9px; border-radius: 6px;
-  white-space: nowrap; transform: translate(-50%, -125%); box-shadow: var(--shadow); z-index: 2; }
+  font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600; padding: 6px 11px; border-radius: 7px;
+  white-space: nowrap; transform: translate(-50%, -130%); box-shadow: var(--shadow); z-index: 2; }
 .chart-empty-note { font-size: 12px; color: var(--ink-muted); padding: 20px 0; text-align: center; }
 
 .reco-list { display: flex; flex-direction: column; gap: 10px; }
@@ -815,7 +819,7 @@ function renderLineChart(containerId, buckets, getValue, fmt) {
     el.innerHTML = '<p class="chart-empty-note">No hay suficientes datos en este período para graficar una tendencia.</p>';
     return;
   }
-  const W = 480, H = 150, padL = 46, padR = 8, padT = 10, padB = 20;
+  const W = 480, H = 150, padL = 70, padR = 10, padT = 24, padB = 26;
   const xs = points.map(p => p.x);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const vals = valid.map(p => p.value);
@@ -830,11 +834,19 @@ function renderLineChart(containerId, buckets, getValue, fmt) {
     pathD += `${cmd} ${xScale(p.x).toFixed(1)} ${yScale(p.value).toFixed(1)} `;
   });
 
+  // Eje Y: versión compacta (ej. "$125k") — con el font-size grande que necesita el gráfico
+  // para leerse bien, el valor completo ($125.395) no entra en el margen izquierdo.
+  const fmtAxis = y => {
+    const abs = Math.abs(y);
+    if (abs >= 1000000) return '$' + (y / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (abs >= 1000) return '$' + Math.round(y / 1000) + 'k';
+    return fmt(y);
+  };
   const gridLines = [0, 0.5, 1].map(f => {
     const y = minY + (maxY - minY) * f;
     const yy = yScale(y).toFixed(1);
     return `<line class="chart-gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>
-      <text class="chart-axis-label" x="${padL - 6}" y="${(+yy + 3).toFixed(1)}" text-anchor="end">${fmt(y)}</text>`;
+      <text class="chart-axis-label" x="${padL - 10}" y="${(+yy + 6).toFixed(1)}" text-anchor="end">${fmtAxis(y)}</text>`;
   }).join('');
 
   const xLabels = `
