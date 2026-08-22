@@ -220,8 +220,10 @@ body {
   background: var(--bg); color: var(--ink);
   font-family: "Work Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; /* nada debe poder desbordar el ancho de la página, ni en mobile */
 }
 .wrap { max-width: 1220px; margin: 0 auto; padding: 28px 24px 64px; }
+@media (max-width: 640px) { .wrap { padding: 18px 14px 48px; } }
 header.top { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 14px; }
 .brand-mark {
@@ -231,18 +233,26 @@ header.top { display: flex; align-items: center; justify-content: space-between;
   letter-spacing: 0.02em; text-align: center; line-height: 1.05; flex-shrink: 0; box-shadow: var(--shadow);
 }
 .brand-text h1 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pdf-btn {
-  display: flex; align-items: center; gap: 6px; font-family: "Work Sans", sans-serif; font-size: 13px;
-  font-weight: 600; color: var(--bg); background: var(--ink); border: none; border-radius: 100px;
-  padding: 9px 16px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; transition: opacity .15s;
+.pdf-cta {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  margin: 8px 0 20px; padding: 22px 20px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow);
 }
-.pdf-btn:hover { opacity: .85; }
-.pdf-btn:active { opacity: .7; }
+.pdf-cta-note { margin: 0; font-size: 12px; color: var(--ink-muted); max-width: 420px; }
+.pdf-btn {
+  display: flex; align-items: center; gap: 6px; font-family: "Work Sans", sans-serif; font-size: 13.5px;
+  font-weight: 600; color: var(--bg); background: var(--ink); border: none; border-radius: 100px;
+  padding: 11px 20px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; transition: opacity .15s, transform .15s;
+}
+.pdf-btn:hover { opacity: .85; transform: translateY(-1px); }
+.pdf-btn:active { opacity: .7; transform: translateY(0); }
 .updated-badge {
   display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 100px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-muted);
-  font-family: "IBM Plex Mono", monospace; box-shadow: var(--shadow); white-space: nowrap;
+  border-radius: 100px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-muted); max-width: 100%;
+  font-family: "IBM Plex Mono", monospace; box-shadow: var(--shadow); white-space: nowrap; box-sizing: border-box;
+}
+@media (max-width: 480px) {
+  .updated-badge { white-space: normal; font-size: 11.5px; line-height: 1.4; }
 }
 .updated-badge .pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--accent-teal);
@@ -272,7 +282,14 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .kpi-section-title { font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); font-weight: 500; white-space: nowrap; }
 .kpi-section-rule { flex: 1; height: 1px; background: var(--border); }
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
-.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; box-shadow: var(--shadow); border-top: 3px solid var(--kpi-accent, var(--border)); }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; box-shadow: var(--shadow); border-top: 3px solid var(--kpi-accent, var(--border)); min-width: 0; }
+@media (max-width: 520px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-card { padding: 14px 14px 12px; border-radius: 13px; }
+  .kpi-value { font-size: 22px; }
+  .kpi-label { font-size: 10.5px; margin-bottom: 6px; }
+  .kpi-sub { font-size: 11.5px; }
+}
 .kpi-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; margin: 0 0 10px; }
 .kpi-value-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .kpi-value { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 28px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; line-height: 1.05; }
@@ -315,7 +332,22 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .is-primary .camp-name { color: var(--accent-blue); }
 
 .wide-panel { margin-bottom: 16px; }
-.table-scroll { overflow-x: auto; }
+/* Sombras de scroll: en mobile una tabla ancha se ve "completa" aunque le falten columnas a la
+   derecha — este truco (100% CSS, sin JS) muestra un degradé en el borde que tiene más contenido
+   para scrollear, y desaparece solo cuando ya no queda nada para ese lado. */
+.table-scroll {
+  overflow-x: auto;
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(to right, var(--surface) 60%, transparent),
+    linear-gradient(to left, var(--surface) 60%, transparent),
+    linear-gradient(to right, rgba(0,0,0,.12), transparent),
+    linear-gradient(to left, rgba(0,0,0,.12), transparent);
+  background-repeat: no-repeat;
+  background-size: 24px 100%, 24px 100%, 10px 100%, 10px 100%;
+  background-position: left center, right center, left center, right center;
+  background-attachment: local, local, scroll, scroll;
+}
 table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
 table.data-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); font-weight: 600; padding: 0 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th.sortable-th { cursor: pointer; user-select: none; }
@@ -338,7 +370,8 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .resolved-pill.unresolved { color: var(--ink-muted); background: var(--surface-2); font-weight: 500;
   font-style: italic; border: 1px dashed var(--border); }
 
-.tab-bar { display: flex; gap: 22px; margin: 0 0 22px; border-bottom: 1px solid var(--border); }
+.tab-bar { display: flex; gap: 22px; margin: 0 0 22px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+@media (max-width: 480px) { .tab-bar { gap: 16px; } .tab-btn { font-size: 12.5px; white-space: nowrap; } }
 .tab-btn { font-family: "Work Sans", sans-serif; font-size: 13.5px; font-weight: 600; color: var(--ink-muted);
   background: none; border: none; border-bottom: 2px solid transparent; padding: 0 0 10px; cursor: pointer; }
 .tab-btn:hover { color: var(--ink); }
@@ -415,10 +448,7 @@ __CSS__
       <div class="brand-mark">CosCor</div>
       <div class="brand-text"><h1>Dashboard CosCor</h1></div>
     </div>
-    <div class="header-actions">
-      <div class="updated-badge"><span class="pulse"></span> Actualizado el __FECHA__</div>
-      <button class="pdf-btn" id="pdfBtn" type="button">📄 Descargar PDF</button>
-    </div>
+    <div class="updated-badge"><span class="pulse"></span> Actualizado el __FECHA__</div>
   </header>
 
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
@@ -499,6 +529,11 @@ __CSS__
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
     </div>
 
+  </div>
+
+  <div class="pdf-cta">
+    <button class="pdf-btn" id="pdfBtn" type="button">📄 Descargar reporte en PDF</button>
+    <p class="pdf-cta-note">Incluye los dos tabs (Resumen + Costos y recomendaciones) con el filtro de fecha que tengas puesto arriba</p>
   </div>
 
   <footer>
