@@ -233,19 +233,6 @@ header.top { display: flex; align-items: center; justify-content: space-between;
   letter-spacing: 0.02em; text-align: center; line-height: 1.05; flex-shrink: 0; box-shadow: var(--shadow);
 }
 .brand-text h1 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-.pdf-cta {
-  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
-  margin: 8px 0 20px; padding: 22px 20px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 16px; box-shadow: var(--shadow);
-}
-.pdf-cta-note { margin: 0; font-size: 12px; color: var(--ink-muted); max-width: 420px; }
-.pdf-btn {
-  display: flex; align-items: center; gap: 6px; font-family: "Work Sans", sans-serif; font-size: 13.5px;
-  font-weight: 600; color: var(--bg); background: var(--ink); border: none; border-radius: 100px;
-  padding: 11px 20px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; transition: opacity .15s, transform .15s;
-}
-.pdf-btn:hover { opacity: .85; transform: translateY(-1px); }
-.pdf-btn:active { opacity: .7; transform: translateY(0); }
 .updated-badge {
   display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border);
   border-radius: 100px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-muted); max-width: 100%;
@@ -417,23 +404,6 @@ footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border
   :root:not([data-theme="light"]) .kpi-card:hover, :root:not([data-theme="light"]) .chart-card:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 12px 28px -12px rgba(0,0,0,0.6); }
 }
 :root[data-theme="dark"] .kpi-card:hover, :root[data-theme="dark"] .chart-card:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 12px 28px -12px rgba(0,0,0,0.6); }
-
-/* ---- Descarga en PDF: "Guardar como PDF" nativo del navegador vía window.print(). Fuerza
-   los 2 tabs visibles (el reporte completo, no solo el que estaba abierto en pantalla) y
-   saca todo lo que no tiene sentido en papel. ---- */
-@media print {
-  body { background: #fff; }
-  .pdf-btn, .tab-bar, .filter-bar, .updated-badge .pulse { display: none !important; }
-  .tab-panel[hidden] { display: block !important; }
-  .tab-panel:first-of-type { margin-bottom: 32px; page-break-after: always; }
-  .kpi-card:hover, .chart-card:hover { transform: none; box-shadow: var(--shadow); }
-  .panel, .kpi-card, .chart-card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
-  .wide-panel, .kpi-section { break-inside: avoid; }
-  table.data-table { font-size: 11px; }
-  th.sortable-th::after { content: ''; }
-  .chart-tooltip { display: none !important; }
-  a[href]::after { content: ''; }
-}
 """
 
 HTML_TEMPLATE = """<!doctype html>
@@ -540,11 +510,6 @@ __CSS__
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
     </div>
 
-  </div>
-
-  <div class="pdf-cta">
-    <button class="pdf-btn" id="pdfBtn" type="button">📄 Descargar reporte</button>
-    <p class="pdf-cta-note" id="pdfBtnNote">Baja una copia completa de esta página (los dos tabs, con el filtro de fecha que tengas puesto arriba). Abrila y usá Imprimir → Guardar como PDF si necesitás el PDF en sí.</p>
   </div>
 
   <footer>
@@ -1365,55 +1330,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click
   document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-selected', b === btn ? 'true' : 'false'); });
   document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.id !== `tab-${btn.dataset.tab}`; });
 }));
-
-// window.print() no sirve acá: el visor de Artifacts corre la página en un sandbox que bloquea
-// llamadas a print()/descargas directas iniciadas por script. La forma soportada de ofrecer un
-// archivo es la capability "downloads" — el viewer confirma y guarda del lado de ellos.
-// @media print (más abajo) se deja igual: si alguien igual usa el Imprimir nativo del navegador
-// (Ctrl/Cmd+P, no el botón) sobre el HTML descargado, sale con los 2 tabs completos.
-(function () {
-  const btn = document.getElementById('pdfBtn');
-  const note = document.getElementById('pdfBtnNote');
-  const originalLabel = btn.textContent;
-  const originalNote = note.textContent;
-  let busy = false;
-
-  async function handleClick() {
-    if (busy) return;
-    busy = true;
-    btn.disabled = true;
-    btn.textContent = 'Preparando…';
-
-    const downloads = (window.claude && typeof window.claude.use === 'function')
-      ? await window.claude.use('downloads') : null;
-
-    if (!downloads) {
-      btn.textContent = originalLabel;
-      note.textContent = 'La descarga no está disponible en esta vista. Probá abrir el link del dashboard directo en el navegador (no dentro del chat) y volvé a intentar.';
-      busy = false; btn.disabled = false;
-      return;
-    }
-
-    try {
-      const snapshot = '<!doctype html>\n' + document.documentElement.outerHTML;
-      const stamp = new Date().toISOString().slice(0, 10);
-      await downloads.save({ filename: `dashboard-coscor-${stamp}.html`, data: snapshot });
-      btn.textContent = '✓ Descargado';
-      note.textContent = 'Listo. Abrí el archivo y usá Imprimir → Guardar como PDF si necesitás el PDF.';
-    } catch (err) {
-      if (err && err.code === 'declined') {
-        // el viewer dijo que no — no es un error, no hace falta avisar nada más
-      } else {
-        btn.textContent = 'No se pudo descargar';
-        note.textContent = 'Algo falló al generar el archivo. Si persiste, probá desde el navegador en vez de la app.';
-        console.error('downloads.save failed', err);
-      }
-    } finally {
-      setTimeout(() => { btn.textContent = originalLabel; note.textContent = originalNote; btn.disabled = false; busy = false; }, 2600);
-    }
-  }
-  btn.addEventListener('click', handleClick);
-})();
 
 render('allTime');
 """
