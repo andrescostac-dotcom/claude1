@@ -399,6 +399,16 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 @media (max-width: 480px) { .tab-btn { font-size: 12.5px; padding: 10px 14px; } }
 
 /* Calendario de visitas agendadas (pestaña WIP) */
+.cal-toolbar {
+  display: flex; gap: 4px; margin: 0 0 14px; padding: 4px; width: fit-content; max-width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 100px;
+}
+.cal-view-btn {
+  font-family: "Work Sans", sans-serif; font-size: 12.5px; font-weight: 600; color: var(--ink-muted);
+  background: none; border: none; border-radius: 100px; padding: 7px 16px; min-height: 34px; cursor: pointer;
+}
+.cal-view-btn:hover { color: var(--ink); }
+.cal-view-btn.active { color: #fff; background: #146F42; } /* mismo verde fijo que .tab-btn.active, mismo motivo de contraste */
 .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; }
 .cal-nav-btn {
   font-family: "Work Sans", sans-serif; font-size: 13px; font-weight: 600; color: var(--ink);
@@ -447,18 +457,35 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 }
 .cal-visit-link { color: var(--accent-blue); font-weight: 600; text-decoration: none; }
 .cal-visit-link:hover { text-decoration: underline; }
+
+/* Vista Semana: agenda vertical, 1 columna -- pensada para mobile, entra sin apretar texto */
+.cal-week { display: flex; flex-direction: column; gap: 8px; }
+.cal-week-day { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--surface); }
+.cal-week-day.today { border-color: var(--accent-blue); }
+.cal-week-day.empty { opacity: 0.55; }
+.cal-week-day-head { display: flex; align-items: center; gap: 8px; }
+.cal-week-dow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); font-weight: 600; }
+.cal-week-daynum { font-family: "Bricolage Grotesque", sans-serif; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cal-week-today-badge { font-size: 10px; font-weight: 700; color: #fff; background: #146F42; border-radius: 100px; padding: 1px 8px; }
+.cal-week-count { margin-left: auto; font-size: 11px; color: var(--ink-muted); font-weight: 600; }
+.cal-week-visits { margin-top: 4px; }
+.cal-week-visits .cal-visit-row:first-child { padding-top: 4px; }
+.cal-week-empty { font-size: 12px; color: var(--ink-muted); margin: 4px 0 2px; }
+
 @media (max-width: 640px) {
   .cal-day { min-height: 50px; font-size: 11px; padding: 4px; }
   .cal-grid { gap: 4px; }
   .cal-event { font-size: 8.5px; }
   .cal-visit-meta { margin-left: 0; width: 100%; }
   .cal-visit-row-sub { padding-left: 0; }
+  .cal-week-day { padding: 9px 10px; }
 }
 @media (max-width: 420px) {
   .cal-dow { font-size: 8.5px; }
   .cal-day-num { font-size: 10.5px; }
   .cal-nav-label { font-size: 13px; }
   .cal-legend-item { font-size: 11px; }
+  .cal-view-btn { font-size: 11.5px; padding: 6px 13px; }
 }
 
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
@@ -973,6 +1000,39 @@ function buildCasaColorMap(leads) {
   return map;
 }
 
+// Lunes de la semana (ISO) a la que pertenece key.
+function mondayOf(key) {
+  const dow = new Date(key).getUTCDay(); // 0=Dom..6=Sáb
+  const diff = (dow + 6) % 7; // días desde el lunes
+  return addDaysKey(key, -diff);
+}
+function weekRangeLabel(weekStart) {
+  const end = addDaysKey(weekStart, 6);
+  const y = new Date(end).getUTCFullYear();
+  return `${keyToLabel(weekStart)} – ${keyToLabel(end)} ${y}`;
+}
+
+// Fila de detalle completo de una visita (hora, nombre, casa, link a Kommo, teléfono) -- la
+// usan tanto el detalle de un día en vista Mes como cada día de la vista Semana.
+function renderVisitDetailRow(l, colorFor) {
+  const kommoUrl = `https://${DATA.kommo_subdomain}/leads/detail/${l.id}`;
+  const telHref = l.phone ? l.phone.replace(/[^+\d]/g, '') : '';
+  return `
+    <div class="cal-visit-row">
+      <div class="cal-visit-row-top">
+        <span class="cal-visit-dot" style="background:${colorFor(l.casa_visitada)}"></span>
+        <span class="cal-visit-time">${visitTimeLabel(l)}</span>
+        <span class="cal-visit-name">${l.contact_name || `Lead #${l.id}`}</span>
+        <span class="cal-visit-meta">${DATA.statuses[l.status_id] || ''}</span>
+      </div>
+      <div class="cal-visit-row-sub">
+        <span>${l.casa_visitada || 'Sin casa cargada'}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
+        <a class="cal-visit-link" href="${kommoUrl}" target="_blank" rel="noopener noreferrer">Ver en Kommo ↗</a>
+        ${l.phone ? `<a class="cal-visit-link" href="tel:${telHref}">📞 ${l.phone}</a>` : ''}
+      </div>
+    </div>`;
+}
+
 function renderCalendar() {
   const scheduled = DATA.leads.filter(l => l.fecha_visita != null);
   const wrap = document.getElementById('calendarWrap');
@@ -993,10 +1053,38 @@ function renderCalendar() {
   if (!calState) {
     const keys = Object.keys(byDay).map(Number).sort((a, b) => a - b);
     const future = keys.find(k => k >= todayKey);
-    const startKey = future != null ? future : keys[keys.length - 1];
-    const d = new Date(startKey);
-    calState = { y: d.getUTCFullYear(), m: d.getUTCMonth(), selectedKey: null };
+    const anchorKey = future != null ? future : keys[keys.length - 1];
+    const d = new Date(anchorKey);
+    calState = { view: 'month', y: d.getUTCFullYear(), m: d.getUTCMonth(), weekStart: mondayOf(anchorKey), selectedKey: null };
   }
+
+  const legendHtml = Object.keys(casaColors).length ? `
+    <div class="cal-legend">
+      ${Object.entries(casaColors).map(([casa, color]) => `<span class="cal-legend-item"><span class="cal-legend-dot" style="background:${color}"></span>${casa}</span>`).join('')}
+    </div>` : '';
+  const toolbarHtml = `
+    <div class="cal-toolbar" role="tablist" aria-label="Vista del calendario">
+      <button class="cal-view-btn${calState.view === 'month' ? ' active' : ''}" data-view="month" type="button">Mes</button>
+      <button class="cal-view-btn${calState.view === 'week' ? ' active' : ''}" data-view="week" type="button">Semana</button>
+    </div>`;
+
+  if (calState.view === 'week') {
+    renderCalendarWeek(wrap, toolbarHtml, legendHtml, byDay, colorFor);
+  } else {
+    renderCalendarMonth(wrap, toolbarHtml, legendHtml, byDay, colorFor);
+  }
+
+  wrap.querySelectorAll('.cal-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (calState.view === btn.dataset.view) return;
+      calState.view = btn.dataset.view;
+      calState.selectedKey = null;
+      renderCalendar();
+    });
+  });
+}
+
+function renderCalendarMonth(wrap, toolbarHtml, legendHtml, byDay, colorFor) {
   const { y, m } = calState;
   const firstOfMonth = dateKey(y, m, 1);
   const firstWeekday = new Date(firstOfMonth).getUTCDay(); // 0=Dom..6=Sáb
@@ -1012,18 +1100,16 @@ function renderCalendar() {
 
   // En pantallas chicas mostramos menos chips por día antes de resumir en "+N más", para que
   // no se desborde la celda -- se relee en cada render así responde a un resize/rotación.
-  const maxShown = window.innerWidth <= 480 ? 2 : 3;
+  const maxShown = window.innerWidth <= 380 ? 1 : window.innerWidth <= 480 ? 2 : 3;
 
   wrap.innerHTML = `
+    ${toolbarHtml}
     <div class="cal-nav">
       <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Mes anterior">‹ Anterior</button>
       <div class="cal-nav-label">${CAL_MESES[m]} ${y}</div>
       <button class="cal-nav-btn" id="calNext" type="button" aria-label="Mes siguiente">Siguiente ›</button>
     </div>
-    ${Object.keys(casaColors).length ? `
-    <div class="cal-legend">
-      ${Object.entries(casaColors).map(([casa, color]) => `<span class="cal-legend-item"><span class="cal-legend-dot" style="background:${color}"></span>${casa}</span>`).join('')}
-    </div>` : ''}
+    ${legendHtml}
     <div class="cal-grid">
       ${CAL_DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
       ${cells.map(k => {
@@ -1049,24 +1135,7 @@ function renderCalendar() {
     ${selectedKey != null ? `
     <div class="cal-list">
       <p class="cal-list-title">${keyToLabel(selectedKey)} de ${y} · ${byDay[selectedKey].length} visita${byDay[selectedKey].length === 1 ? '' : 's'}</p>
-      ${byDay[selectedKey].slice().sort((a, b) => a.fecha_visita - b.fecha_visita).map(l => {
-        const kommoUrl = `https://${DATA.kommo_subdomain}/leads/detail/${l.id}`;
-        const telHref = l.phone ? l.phone.replace(/[^+\d]/g, '') : '';
-        return `
-        <div class="cal-visit-row">
-          <div class="cal-visit-row-top">
-            <span class="cal-visit-dot" style="background:${colorFor(l.casa_visitada)}"></span>
-            <span class="cal-visit-time">${visitTimeLabel(l)}</span>
-            <span class="cal-visit-name">${l.contact_name || `Lead #${l.id}`}</span>
-            <span class="cal-visit-meta">${DATA.statuses[l.status_id] || ''}</span>
-          </div>
-          <div class="cal-visit-row-sub">
-            <span>${l.casa_visitada || 'Sin casa cargada'}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
-            <a class="cal-visit-link" href="${kommoUrl}" target="_blank" rel="noopener noreferrer">Ver en Kommo ↗</a>
-            ${l.phone ? `<a class="cal-visit-link" href="tel:${telHref}">📞 ${l.phone}</a>` : ''}
-          </div>
-        </div>`;
-      }).join('')}
+      ${byDay[selectedKey].slice().sort((a, b) => a.fecha_visita - b.fecha_visita).map(l => renderVisitDetailRow(l, colorFor)).join('')}
     </div>` : ''}
   `;
   document.getElementById('calPrev').addEventListener('click', () => {
@@ -1084,6 +1153,51 @@ function renderCalendar() {
       calState.selectedKey = Number(el.dataset.day);
       renderCalendar();
     });
+  });
+}
+
+// Vista Semana: agenda vertical de 7 días (lunes a domingo), con el detalle completo de cada
+// visita ya desplegado (a diferencia de Mes, acá no hace falta click -- entra mucho mejor en
+// una pantalla angosta que el grid de 7 columnas).
+function renderCalendarWeek(wrap, toolbarHtml, legendHtml, byDay, colorFor) {
+  const { weekStart } = calState;
+  const days = Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i));
+
+  wrap.innerHTML = `
+    ${toolbarHtml}
+    <div class="cal-nav">
+      <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Semana anterior">‹ Anterior</button>
+      <div class="cal-nav-label">${weekRangeLabel(weekStart)}</div>
+      <button class="cal-nav-btn" id="calNext" type="button" aria-label="Semana siguiente">Siguiente ›</button>
+    </div>
+    ${legendHtml}
+    <div class="cal-week">
+      ${days.map((k, i) => {
+        const visits = (byDay[k] || []).slice().sort((a, b) => a.fecha_visita - b.fecha_visita);
+        const isToday = k === todayKey;
+        const dayNum = new Date(k).getUTCDate();
+        return `
+        <div class="cal-week-day${isToday ? ' today' : ''}${visits.length ? '' : ' empty'}">
+          <div class="cal-week-day-head">
+            <span class="cal-week-dow">${CAL_DOW[i]}</span>
+            <span class="cal-week-daynum">${dayNum}</span>
+            ${isToday ? '<span class="cal-week-today-badge">Hoy</span>' : ''}
+            ${visits.length ? `<span class="cal-week-count">${visits.length} visita${visits.length === 1 ? '' : 's'}</span>` : ''}
+          </div>
+          <div class="cal-week-visits">
+            ${visits.length ? visits.map(l => renderVisitDetailRow(l, colorFor)).join('') : '<p class="cal-week-empty">Sin visitas</p>'}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+  document.getElementById('calPrev').addEventListener('click', () => {
+    calState.weekStart = addDaysKey(calState.weekStart, -7);
+    renderCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', () => {
+    calState.weekStart = addDaysKey(calState.weekStart, 7);
+    renderCalendar();
   });
 }
 
