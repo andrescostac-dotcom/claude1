@@ -180,7 +180,9 @@ function fetchContactsById(ids) {
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
   const headers = { Authorization: 'Bearer ' + token };
   const byId = {};
-  const BATCH = 150;
+  // 150 tiraba "Limit Exceeded: URLFetch URL Length" (cada filter[id][]=NNNNNNN suma ~13-22
+  // caracteres a la URL) -- 50 deja margen de sobra bajo el límite de UrlFetchApp.
+  const BATCH = 50;
   const idList = Array.from(ids);
   for (let i = 0; i < idList.length; i += BATCH) {
     const batch = idList.slice(i, i + BATCH);
