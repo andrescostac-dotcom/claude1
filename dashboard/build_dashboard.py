@@ -1079,7 +1079,7 @@ function render(rangeKey) {
       { label: 'Leads con visita calificada', value: fmtInt(curAgg.qualifiedVisit), badge: badge(curAgg.qualifiedVisit, prevAgg.qualifiedVisit, true),
         sub: `${fmtPct(qualVisitRate)} del total · 2da reunión, negociación o ganado` },
     ]},
-    { title: 'Tasas de conversión', accent: 'var(--accent-blue)', sortAsc: true, items: [
+    { title: 'Tasas de conversión', accent: 'var(--accent-blue)', sortDir: 'desc', items: [
       { label: 'Tasa de conversión (visita)', value: fmtPct(qualRate), badge: qualRate === null ? '' : badge(qualRate, prevQualRate, true),
         sub: 'leads con visita / total de leads', sortValue: qualRate },
       { label: 'Tasa de conversión (visita calificada)', value: fmtPct(qualVisitRate), badge: qualVisitRate === null ? '' : badge(qualVisitRate, prevQualVisitRate, true),
@@ -1093,7 +1093,7 @@ function render(rangeKey) {
       { label: 'Conversaciones de WhatsApp', value: fmtInt(whatsappCur.conversations), badge: badge(whatsappCur.conversations, whatsappPrev.conversations, true),
         sub: 'Meta Ads · campaña de conversión' },
     ]},
-    { title: 'Costo por resultado', accent: 'var(--ink-muted)', sortAsc: true, items: [
+    { title: 'Costo por resultado', accent: 'var(--ink-muted)', sortDir: 'asc', items: [
       { label: 'Costo por visita', value: costPerVisitCur === null ? '—' : fmtARS(costPerVisitCur), badge: costPerVisitCur === null ? '' : badge(costPerVisitCur, costPerVisitPrev, false),
         sub: 'inversión total en Meta Ads / leads con visita', sortValue: costPerVisitCur },
       { label: 'Costo por visita calificada', value: costPerQualVisitCur === null ? '—' : fmtARS(costPerQualVisitCur), badge: costPerQualVisitCur === null ? '' : badge(costPerQualVisitCur, costPerQualVisitPrev, false),
@@ -1102,16 +1102,17 @@ function render(rangeKey) {
         sub: 'inversión en WhatsApp / conversaciones', sortValue: cpcCur },
     ]},
   ];
-  // "Tasas de conversión" y "Costo por resultado" van de menor a mayor según el valor real del
-  // período (no un orden fijo) — los sin dato (—) quedan siempre al final.
+  // "Tasas de conversión" (mayor a menor) y "Costo por resultado" (menor a mayor) se ordenan
+  // según el valor real del período (no un orden fijo) — los sin dato (—) siempre al final.
   kpiGroups.forEach(g => {
-    if (!g.sortAsc) return;
+    if (!g.sortDir) return;
+    const sign = g.sortDir === 'desc' ? -1 : 1;
     g.items.sort((a, b) => {
       const av = a.sortValue, bv = b.sortValue;
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
-      return av - bv;
+      return (av - bv) * sign;
     });
   });
   document.getElementById('kpiGrid').innerHTML = kpiGroups.map(g => `
