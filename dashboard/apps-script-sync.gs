@@ -88,7 +88,7 @@ function debugLead() {
 //    y no en el lead (posible explicación de por qué nunca aparecen del lado del lead).
 // Correr una vez desde el editor y pegarme el resultado (Ver > Registros o Ctrl+Enter).
 function debugCustomFields() {
-  const LEAD_ID = 10143172; // "Logrado con éxito" — debería tener casa visitada y fecha de visita cargadas
+  const LEAD_ID = 6441028; // el usuario confirmó que este lead SÍ tiene Casa Visitada / Fecha Visita cargadas
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
   const headers = { Authorization: 'Bearer ' + token };
