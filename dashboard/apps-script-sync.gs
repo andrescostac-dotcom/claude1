@@ -170,6 +170,38 @@ function extractCustomFieldDateById(customFields, fieldId) {
   return isNaN(parsed.getTime()) ? '' : parsed;
 }
 
+// Trae custom_fields_values de varios contactos de una — Kommo permite filtrar por múltiples
+// id con filter[id][]=... — en tandas (para no armar URLs demasiado largas) de a BATCH.
+// Confirmado con el usuario (23/8): "Casa Visitada" y "Fecha Visita" viven en el CONTACTO
+// vinculado al lead, no en el lead — por eso hace falta este segundo fetch (a diferencia de
+// Fuente y los UTM, que sí están en custom_fields_values del lead).
+function fetchContactsById(ids) {
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+  const byId = {};
+  const BATCH = 150;
+  const idList = Array.from(ids);
+  for (let i = 0; i < idList.length; i += BATCH) {
+    const batch = idList.slice(i, i + BATCH);
+    const filterParams = batch.map(id => `filter[id][]=${id}`).join('&');
+    let page = 1;
+    while (true) {
+      const resp = UrlFetchApp.fetch(
+        `https://${subdomain}/api/v4/contacts?${filterParams}&limit=250&page=${page}`,
+        { headers, muteHttpExceptions: true });
+      if (resp.getResponseCode() === 204) break;
+      const data = JSON.parse(resp.getContentText());
+      const contacts = (data._embedded && data._embedded.contacts) || [];
+      if (!contacts.length) break;
+      for (const c of contacts) byId[c.id] = c.custom_fields_values;
+      if (!data._links || !data._links.next) break;
+      page++;
+    }
+  }
+  return byId;
+}
+
 function syncKommoLeads() {
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
@@ -181,11 +213,14 @@ function syncKommoLeads() {
   const statuses = {};
   pipeline._embedded.statuses.forEach(s => { statuses[s.id] = s.name; });
 
-  const rows = [];
+  // Fase 1: traer todos los leads (con su contacto principal embebido vía with=contacts) y
+  // armar filas parciales -- todavía sin casa_visitada/fecha_visita, que dependen del contacto.
+  const partial = [];
+  const contactIds = new Set();
   let page = 1;
   while (true) {
     const resp = UrlFetchApp.fetch(
-      `https://${subdomain}/api/v4/leads?limit=250&page=${page}`,
+      `https://${subdomain}/api/v4/leads?with=contacts&limit=250&page=${page}`,
       { headers, muteHttpExceptions: true });
     if (resp.getResponseCode() === 204) break;
     const data = JSON.parse(resp.getContentText());
@@ -196,29 +231,46 @@ function syncKommoLeads() {
       const devTags = [...new Set(rawTags.filter(t => !EXCLUDE_TAGS.includes(t)).map(canonicalTag))];
       const utmCampaign = extractCustomField(l.custom_fields_values, ['utmcampaign']);
       const utmContent = extractCustomField(l.custom_fields_values, ['utmcontent']);
-      const casaVisitada = extractCustomFieldById(l.custom_fields_values, FIELD_CASA_VISITADA);
       const fuente = extractCustomFieldById(l.custom_fields_values, FIELD_FUENTE);
-      const fechaVisita = extractCustomFieldDateById(l.custom_fields_values, FIELD_FECHA_VISITA);
-      rows.push([
-        l.id,
-        new Date(l.created_at * 1000),
-        l.status_id,
-        statuses[l.status_id] || 'Desconocido',
-        QUALIFIED_IDS.includes(l.status_id) ? 1 : 0,
-        l.status_id === WON_ID ? 1 : 0,
-        l.status_id === LOST_ID ? 1 : 0,
-        devTags.join(', '),
-        l.price || 0,
-        utmCampaign,
-        utmContent,
-        casaVisitada,
-        fuente,
-        fechaVisita,
-      ]);
+      const leadContacts = (l._embedded && l._embedded.contacts) || [];
+      const mainContact = leadContacts.find(c => c.is_main) || leadContacts[0] || null;
+      if (mainContact) contactIds.add(mainContact.id);
+      partial.push({
+        id: l.id, created_at: l.created_at, status_id: l.status_id,
+        status_name: statuses[l.status_id] || 'Desconocido',
+        devTags, price: l.price || 0, utmCampaign, utmContent, fuente,
+        contactId: mainContact ? mainContact.id : null,
+      });
     }
     if (!data._links || !data._links.next) break;
     page++;
   }
+
+  // Fase 2: traer los custom_fields_values de todos los contactos referenciados, de una.
+  const contactFields = fetchContactsById(contactIds);
+
+  // Fase 3: resolver casa_visitada / fecha_visita por contacto y armar las filas finales.
+  const rows = partial.map(p => {
+    const cf = p.contactId ? contactFields[p.contactId] : null;
+    const casaVisitada = extractCustomFieldById(cf, FIELD_CASA_VISITADA);
+    const fechaVisita = extractCustomFieldDateById(cf, FIELD_FECHA_VISITA);
+    return [
+      p.id,
+      new Date(p.created_at * 1000),
+      p.status_id,
+      p.status_name,
+      QUALIFIED_IDS.includes(p.status_id) ? 1 : 0,
+      p.status_id === WON_ID ? 1 : 0,
+      p.status_id === LOST_ID ? 1 : 0,
+      p.devTags.join(', '),
+      p.price,
+      p.utmCampaign,
+      p.utmContent,
+      casaVisitada,
+      p.fuente,
+      fechaVisita,
+    ];
+  });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Leads') || ss.insertSheet('Leads');

@@ -185,6 +185,23 @@ Pendiente: una vez que el usuario confirme que Casa Visitada / Fecha Visita est�
 mapeados (o corrija el `field_id`), correr un refresh y verificar visualmente que las 2
 tablas + el calendario se pueblan con datos reales.
 
+**Resuelto (23/8, ronda 4)**: confirmado con `debugCustomFields()` sobre el lead 6441028
+(que el usuario indicó que sí tenía estos campos cargados) — Casa Visitada y Fecha Visita
+viven en el **CONTACTO** vinculado al lead, no en el lead mismo (a diferencia de Fuente y
+los UTM, que sí están en `custom_fields_values` del lead). Por eso salían vacíos en el
+100% de los leads: el código buscaba en el lugar equivocado, no había ningún problema con
+el `field_id`.
+
+`syncKommoLeads()` ahora sincroniza en 3 fases:
+1. Trae todos los leads con `?with=contacts` (para tener el contacto principal embebido).
+2. `fetchContactsById()` trae en tandas de 150 (`filter[id][]=...`) los
+   `custom_fields_values` de todos los contactos referenciados, de una sola vez (no un
+   fetch por lead — con ~2200 leads sería demasiadas requests).
+3. Resuelve `casa_visitada`/`fecha_visita` de cada lead buscando en el contacto principal
+   (`is_main`, o el primero si no hay ninguno marcado como principal).
+
+**Para activarlo**: pegar el `.gs` actualizado y correr `syncAll` una vez.
+
 Ideas ya conversadas para una vez que haya datos reales:
 - **Fuente**: tabla de leads/visita/visita calificada por fuente (igual estructura que
   la tabla de UTM).
