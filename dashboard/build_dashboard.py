@@ -1055,7 +1055,7 @@ function renderCalendar() {
     const future = keys.find(k => k >= todayKey);
     const anchorKey = future != null ? future : keys[keys.length - 1];
     const d = new Date(anchorKey);
-    calState = { view: 'month', y: d.getUTCFullYear(), m: d.getUTCMonth(), weekStart: mondayOf(anchorKey), selectedKey: null };
+    calState = { view: 'week', y: d.getUTCFullYear(), m: d.getUTCMonth(), weekStart: mondayOf(anchorKey), selectedKey: null };
   }
 
   const legendHtml = Object.keys(casaColors).length ? `
