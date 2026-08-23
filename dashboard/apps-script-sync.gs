@@ -140,6 +140,7 @@ function extractCustomField(customFields, patterns) {
 const FIELD_CASA_VISITADA = 2444391;
 const FIELD_FUENTE = 578180;
 const FIELD_FECHA_VISITA = 576940;
+const FIELD_PHONE = 559132; // campo "Phone" del CONTACTO (visto en debugCustomFields)
 
 // Devuelve el/los valor(es) de un campo personalizado por field_id, como string. Sirve tanto
 // para campos de texto/selección simple (values[0].value) como multiselección (values.length > 1
@@ -170,6 +171,16 @@ function extractCustomFieldDateById(customFields, fieldId) {
   return isNaN(parsed.getTime()) ? '' : parsed;
 }
 
+// El campo Phone puede traer varios números (trabajo, celular, etc.), cada uno con enum_code.
+// Preferimos el marcado como celular/móvil si existe; si no, el primero que haya.
+function extractPhone(customFields) {
+  if (!customFields) return '';
+  const f = customFields.find(cf => Number(cf.field_id) === FIELD_PHONE);
+  if (!f || !f.values || !f.values.length) return '';
+  const mobile = f.values.find(v => /mob|cel/i.test(v.enum_code || ''));
+  return (mobile || f.values[0]).value || '';
+}
+
 // Trae custom_fields_values de varios contactos de una — Kommo permite filtrar por múltiples
 // id con filter[id][]=... — en tandas (para no armar URLs demasiado largas) de a BATCH.
 // Confirmado con el usuario (23/8): "Casa Visitada" y "Fecha Visita" viven en el CONTACTO
@@ -196,7 +207,7 @@ function fetchContactsById(ids) {
       const data = JSON.parse(resp.getContentText());
       const contacts = (data._embedded && data._embedded.contacts) || [];
       if (!contacts.length) break;
-      for (const c of contacts) byId[c.id] = c.custom_fields_values;
+      for (const c of contacts) byId[c.id] = { name: c.name || '', customFields: c.custom_fields_values };
       if (!data._links || !data._links.next) break;
       page++;
     }
@@ -251,11 +262,15 @@ function syncKommoLeads() {
   // Fase 2: traer los custom_fields_values de todos los contactos referenciados, de una.
   const contactFields = fetchContactsById(contactIds);
 
-  // Fase 3: resolver casa_visitada / fecha_visita por contacto y armar las filas finales.
+  // Fase 3: resolver casa_visitada / fecha_visita / nombre / teléfono por contacto y armar
+  // las filas finales.
   const rows = partial.map(p => {
-    const cf = p.contactId ? contactFields[p.contactId] : null;
+    const contact = p.contactId ? contactFields[p.contactId] : null;
+    const cf = contact ? contact.customFields : null;
     const casaVisitada = extractCustomFieldById(cf, FIELD_CASA_VISITADA);
     const fechaVisita = extractCustomFieldDateById(cf, FIELD_FECHA_VISITA);
+    const contactName = contact ? contact.name : '';
+    const phone = extractPhone(cf);
     return [
       p.id,
       new Date(p.created_at * 1000),
@@ -271,13 +286,15 @@ function syncKommoLeads() {
       casaVisitada,
       p.fuente,
       fechaVisita,
+      contactName,
+      phone,
     ];
   });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Leads') || ss.insertSheet('Leads');
   sheet.clear();
-  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita']);
+  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita', 'contact_name', 'phone']);
   if (rows.length) sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   sheet.getRange(2, 2, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
   sheet.getRange(2, 14, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');

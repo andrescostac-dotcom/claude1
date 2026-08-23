@@ -32,6 +32,11 @@ TAG_ALIASES = {"Difusion Misiones": "Misiones"}
 EXCLUDE_TAGS = ["Difusión", "Follow-up 1", "JN", "WA", "Interes Futuro", "Apta Credito",
                 "Presu menos 300", "Barrio Cerrado", "Inmobiliaria"]
 
+# Para armar el link "Ver en Kommo" desde el calendario de visitas. No es un secreto (aparece
+# en cualquier URL de Kommo de esta cuenta) -- solo lleva a la pantalla de login si quien mira
+# el dashboard no tiene sesión abierta en Kommo.
+KOMMO_SUBDOMAIN = "infocoscorlife.kommo.com"
+
 RESULT_LABEL = {
     "OUTCOME_LEADS": "Conversaciones de WhatsApp",
     "OUTCOME_AWARENESS": "Alcance",
@@ -90,6 +95,8 @@ for r in lead_rows:
     casa_visitada = (get(r, "casa_visitada") or "").strip()
     fuente = (get(r, "fuente") or "").strip()
     fecha_visita = get(r, "fecha_visita")
+    contact_name = (get(r, "contact_name") or "").strip()
+    phone = (get(r, "phone") or "").strip()
     if status_id not in statuses:
         statuses[status_id] = status_name
         first_seen_status_order.append(status_id)
@@ -113,6 +120,8 @@ for r in lead_rows:
         "casa_visitada": casa_visitada,
         "fuente": fuente,
         "fecha_visita": fecha_visita_epoch,
+        "contact_name": contact_name,
+        "phone": phone,
     })
 
 status_order = {}
@@ -176,6 +185,7 @@ payload = {
     "qualified_visit_ids": QUALIFIED_VISIT_IDS,
     "adset_to_dev": ADSET_TO_DEV,
     "utm_content_to_adset": UTM_CONTENT_TO_ADSET,
+    "kommo_subdomain": KOMMO_SUBDOMAIN,
     "tag_aliases": TAG_ALIASES,
     "exclude_tags": EXCLUDE_TAGS,
     "result_label": RESULT_LABEL,
@@ -419,16 +429,25 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .cal-more { font-size: 9px; color: var(--ink-muted); padding: 0 4px; }
 .cal-list { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; }
 .cal-list-title { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 14px; margin: 0 0 10px; }
-.cal-visit-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; flex-wrap: wrap; }
+.cal-visit-row { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .cal-visit-row:last-child { border-bottom: none; }
+.cal-visit-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cal-visit-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .cal-visit-time { font-family: "IBM Plex Mono", monospace; font-weight: 700; color: var(--accent-blue); min-width: 44px; }
+.cal-visit-name { font-weight: 600; }
 .cal-visit-meta { color: var(--ink-muted); margin-left: auto; }
+.cal-visit-row-sub {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 5px; padding-left: 17px;
+  font-size: 11.5px; color: var(--ink-muted);
+}
+.cal-visit-link { color: var(--accent-blue); font-weight: 600; text-decoration: none; }
+.cal-visit-link:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .cal-day { min-height: 50px; font-size: 11px; padding: 4px; }
   .cal-grid { gap: 4px; }
   .cal-event { font-size: 8.5px; }
   .cal-visit-meta { margin-left: 0; width: 100%; }
+  .cal-visit-row-sub { padding-left: 0; }
 }
 @media (max-width: 420px) {
   .cal-dow { font-size: 8.5px; }
@@ -930,7 +949,10 @@ function visitDayKey(l) {
   return dateKey(ad.y, ad.m, ad.d);
 }
 function visitTimeLabel(l) {
-  const shifted = new Date(l.fecha_visita * 1000 + ARG_OFFSET_MS);
+  // ARG es UTC-3: para pasar de epoch UTC a la hora de pared de Argentina hay que RESTAR el
+  // offset (no sumarlo) -- estaba sumado, por eso se mostraban 3hs de más (ej. 14:15 en vez
+  // de 11:15 real, reportado por el usuario).
+  const shifted = new Date(l.fecha_visita * 1000 - ARG_OFFSET_MS);
   return `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`;
 }
 
@@ -1021,13 +1043,24 @@ function renderCalendar() {
     ${selectedKey != null ? `
     <div class="cal-list">
       <p class="cal-list-title">${keyToLabel(selectedKey)} de ${y} · ${byDay[selectedKey].length} visita${byDay[selectedKey].length === 1 ? '' : 's'}</p>
-      ${byDay[selectedKey].slice().sort((a, b) => a.fecha_visita - b.fecha_visita).map(l => `
+      ${byDay[selectedKey].slice().sort((a, b) => a.fecha_visita - b.fecha_visita).map(l => {
+        const kommoUrl = `https://${DATA.kommo_subdomain}/leads/detail/${l.id}`;
+        const telHref = l.phone ? l.phone.replace(/[^+\d]/g, '') : '';
+        return `
         <div class="cal-visit-row">
-          <span class="cal-visit-dot" style="background:${colorFor(l.casa_visitada)}"></span>
-          <span class="cal-visit-time">${visitTimeLabel(l)}</span>
-          <span>${l.casa_visitada || 'Sin casa cargada'} · Lead #${l.id}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
-          <span class="cal-visit-meta">${DATA.statuses[l.status_id] || ''}</span>
-        </div>`).join('')}
+          <div class="cal-visit-row-top">
+            <span class="cal-visit-dot" style="background:${colorFor(l.casa_visitada)}"></span>
+            <span class="cal-visit-time">${visitTimeLabel(l)}</span>
+            <span class="cal-visit-name">${l.contact_name || `Lead #${l.id}`}</span>
+            <span class="cal-visit-meta">${DATA.statuses[l.status_id] || ''}</span>
+          </div>
+          <div class="cal-visit-row-sub">
+            <span>${l.casa_visitada || 'Sin casa cargada'}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
+            <a class="cal-visit-link" href="${kommoUrl}" target="_blank" rel="noopener noreferrer">Ver en Kommo ↗</a>
+            ${l.phone ? `<a class="cal-visit-link" href="tel:${telHref}">📞 ${l.phone}</a>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
     </div>` : ''}
   `;
   document.getElementById('calPrev').addEventListener('click', () => {
