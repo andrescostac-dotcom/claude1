@@ -79,6 +79,24 @@ function debugLead() {
   Logger.log(resp.getContentText());
 }
 
+// --- DEBUG: "Casa Visitada" y "Fecha Visita" salieron vacíos en TODOS los leads
+// (incluso en uno "Logrado con éxito"). Esta función imprime SOLO los custom_fields_values
+// de un lead que sabemos que tuvo visita/negociación, para confirmar si el campo 2444391 /
+// 576940 aparece con datos, o si el field_id está mal / el campo no se usa en esta cuenta.
+// Correr una vez desde el editor y pegarme el resultado (Ver > Registros o Ctrl+Enter).
+function debugCustomFields() {
+  const LEAD_ID = 10143172; // "Logrado con éxito" — debería tener casa visitada y fecha de visita cargadas
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+  const resp = UrlFetchApp.fetch(
+    `https://${subdomain}/api/v4/leads/${LEAD_ID}`,
+    { headers, muteHttpExceptions: true });
+  Logger.log('HTTP ' + resp.getResponseCode());
+  const lead = JSON.parse(resp.getContentText());
+  Logger.log(JSON.stringify(lead.custom_fields_values, null, 2));
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)

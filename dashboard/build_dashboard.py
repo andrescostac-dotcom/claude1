@@ -383,6 +383,52 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .tab-panel[hidden] { display: none; }
 @media (max-width: 480px) { .tab-btn { font-size: 12.5px; padding: 10px 14px; } }
 
+/* Calendario de visitas agendadas (pestaña WIP) */
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; }
+.cal-nav-btn {
+  font-family: "Work Sans", sans-serif; font-size: 13px; font-weight: 600; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;
+  min-height: 40px; cursor: pointer;
+}
+.cal-nav-btn:hover { border-color: var(--accent-teal); }
+.cal-nav-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+.cal-nav-label { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 15px; text-transform: capitalize; text-align: center; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.cal-dow { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); text-align: center; padding-bottom: 4px; font-weight: 600; }
+.cal-day {
+  min-height: 62px; border: 1px solid var(--border); border-radius: 10px; padding: 6px; background: var(--surface);
+  font-size: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+.cal-day.other-month { visibility: hidden; }
+.cal-day.today { border-color: var(--accent-blue); }
+.cal-day.has-visits { cursor: pointer; }
+.cal-day.has-visits:hover { border-color: var(--accent-teal); background: var(--surface-2); }
+.cal-day.selected { background: color-mix(in srgb, var(--accent-teal) 16%, var(--surface)); border-color: var(--accent-teal); }
+.cal-day-num { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cal-day-badge {
+  /* mismo verde fijo que .tab-btn.active (no var(--accent-teal)): con blanco encima da ~3:1,
+     insuficiente para WCAG AA — #146F42 da 6.2:1 en los dos temas */
+  align-self: flex-start; background: #146F42; color: #fff; border-radius: 100px;
+  font-size: 10.5px; font-weight: 700; padding: 1px 7px; font-variant-numeric: tabular-nums;
+}
+.cal-list { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; }
+.cal-list-title { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 14px; margin: 0 0 10px; }
+.cal-visit-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; flex-wrap: wrap; }
+.cal-visit-row:last-child { border-bottom: none; }
+.cal-visit-time { font-family: "IBM Plex Mono", monospace; font-weight: 700; color: var(--accent-blue); min-width: 44px; }
+.cal-visit-meta { color: var(--ink-muted); margin-left: auto; }
+@media (max-width: 640px) {
+  .cal-day { min-height: 46px; font-size: 11px; padding: 4px; }
+  .cal-grid { gap: 4px; }
+  .cal-visit-meta { margin-left: 0; width: 100%; }
+}
+@media (max-width: 420px) {
+  .cal-dow { font-size: 8.5px; }
+  .cal-day-num { font-size: 10.5px; }
+  .cal-day-badge { font-size: 9px; padding: 1px 5px; }
+  .cal-nav-label { font-size: 13px; }
+}
+
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; }
 .chart-card h3 { font-family: "Bricolage Grotesque", sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 3px; }
@@ -449,6 +495,7 @@ __CSS__
   <div class="tab-bar" id="tabBar" role="tablist">
     <button class="tab-btn active" data-tab="resumen" role="tab" aria-selected="true">Resumen</button>
     <button class="tab-btn" data-tab="costos" role="tab" aria-selected="false">Costos y recomendaciones</button>
+    <button class="tab-btn" data-tab="wip" role="tab" aria-selected="false">WIP</button>
   </div>
 
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
@@ -522,6 +569,34 @@ __CSS__
       <h2>Inversión por resultado</h2>
       <p class="panel-sub">Mismos períodos que los gráficos de arriba, con la inversión y las cantidades detrás de cada costo. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
+    </div>
+
+  </div>
+
+  <div class="tab-panel" id="tab-wip" role="tabpanel" hidden>
+
+    <div class="panel wide-panel">
+      <h2>Leads por Fuente</h2>
+      <p class="panel-sub">Campo "Fuente" de Kommo, cargado a mano por el equipo de ventas — no todos los leads lo tienen cargado, así que no suma el total de leads del período.</p>
+      <div class="table-scroll"><table class="data-table" id="fuenteTable"></table></div>
+    </div>
+
+    <div class="panel wide-panel">
+      <h2>Leads por Casa Visitada</h2>
+      <p class="panel-sub">Campo "Casa Visitada" de Kommo. <span id="casaVisitadaNote"></span></p>
+      <div class="table-scroll"><table class="data-table" id="casaVisitadaTable"></table></div>
+    </div>
+
+    <div class="panel wide-panel">
+      <h2>Visitas por Fecha de Visita</h2>
+      <p class="panel-sub">Usa la fecha real de la visita (campo "Fecha Visita" de Kommo) en vez de la fecha de creación del lead — a diferencia de los gráficos de costo de la pestaña "Costos y recomendaciones", acá no hay sesgo de rezago. <span id="fechaVisitaNote"></span></p>
+      <div class="table-scroll"><table class="data-table" id="fechaVisitaTable"></table></div>
+    </div>
+
+    <div class="panel wide-panel">
+      <h2>Calendario de visitas agendadas</h2>
+      <p class="panel-sub">Fecha y hora de cada lead con visita cargada en Kommo (campo "Fecha Visita") — para saber de un vistazo cuándo son. <span id="calendarNote"></span></p>
+      <div id="calendarWrap"></div>
     </div>
 
   </div>
@@ -782,6 +857,198 @@ function devLeadsByTagAndQualified(leads) {
     }
   }
   return byTag;
+}
+
+// ============ Tab "WIP" (Fuente / Casa Visitada / Fecha Visita) ============
+
+// Agrupa leads por un campo simple de Kommo (fuente, casa_visitada) con las mismas 3 métricas
+// que se usan en el resto del dashboard: leads, con visita, visita calificada. Los leads sin
+// ese campo cargado en Kommo van a "(sin dato)" — no se descartan, para que el total siga
+// cuadrando con el resto de las tablas del período.
+function aggregateByField(leads, field) {
+  const byVal = {};
+  for (const l of leads) {
+    const val = l[field] || '(sin dato)';
+    if (!byVal[val]) byVal[val] = { leads: 0, visit: 0, qualifiedVisit: 0 };
+    byVal[val].leads++;
+    if (DATA.qualified_ids.includes(l.status_id)) byVal[val].visit++;
+    if (DATA.qualified_visit_ids.includes(l.status_id)) byVal[val].qualifiedVisit++;
+  }
+  return byVal;
+}
+
+function renderFieldTable(tableId, leads, field, colLabel) {
+  const byVal = aggregateByField(leads, field);
+  const rows = Object.entries(byVal).sort((a, b) => b[1].leads - a[1].leads);
+  const total = rows.reduce((s, [, v]) => s + v.leads, 0);
+  const totVisit = rows.reduce((s, [, v]) => s + v.visit, 0);
+  const totQualVisit = rows.reduce((s, [, v]) => s + v.qualifiedVisit, 0);
+  document.getElementById(tableId).innerHTML = rows.length ? `
+    <thead><tr>
+      <th>${colLabel}</th><th>Leads</th><th>Con visita</th><th>Visita calificada</th>
+      <th>Tasa de visita</th><th>Tasa de visita calificada</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(([name, v]) => {
+        const rate = v.leads ? v.visit / v.leads * 100 : null;
+        const qualRate = v.leads ? v.qualifiedVisit / v.leads * 100 : null;
+        return `<tr>
+          <td class="label-cell" data-sort="${name}">${name}</td>
+          <td data-sort="${v.leads}">${fmtInt(v.leads)}</td>
+          <td data-sort="${v.visit}">${fmtInt(v.visit)}</td>
+          <td data-sort="${v.qualifiedVisit}">${fmtInt(v.qualifiedVisit)}</td>
+          <td data-sort="${rate ?? ''}">${fmtPct(rate)}</td>
+          <td data-sort="${qualRate ?? ''}">${fmtPct(qualRate)}</td>
+        </tr>`;
+      }).join('')}
+      <tr class="total-row"><td class="label-cell">Total</td>
+        <td>${fmtInt(total)}</td><td>${fmtInt(totVisit)}</td><td>${fmtInt(totQualVisit)}</td>
+        <td>${fmtPct(total ? totVisit / total * 100 : null)}</td>
+        <td>${fmtPct(total ? totQualVisit / total * 100 : null)}</td></tr>
+    </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin leads en este período.</td></tr></tbody>`;
+  makeSortable(tableId);
+}
+
+// A diferencia de filterLeads (que filtra por created_at, la fecha en que se generó el lead),
+// esta usa fecha_visita — la fecha real en que ocurrió (u ocurre) la visita. Deja afuera los
+// leads que no tienen ese campo cargado en Kommo.
+function filterLeadsByVisitDate(startKey, endKey) {
+  const s = keyToArgUtcStart(startKey) / 1000;
+  const e = keyToArgUtcStart(addDaysKey(endKey, 1)) / 1000;
+  return DATA.leads.filter(l => l.fecha_visita != null && l.fecha_visita >= s && l.fecha_visita < e);
+}
+
+function computeVisitBucketMetrics(b) {
+  const leads = filterLeadsByVisitDate(b.start, b.end);
+  let qualifiedVisit = 0;
+  for (const l of leads) if (DATA.qualified_visit_ids.includes(l.status_id)) qualifiedVisit++;
+  return { ...b, visits: leads.length, qualifiedVisit };
+}
+
+function renderFechaVisitaTable(startKey, endKey) {
+  const buckets = buildBuckets(startKey, endKey).map(computeVisitBucketMetrics);
+  const withData = buckets.filter(b => b.visits > 0);
+  document.getElementById('fechaVisitaNote').textContent = withData.length
+    ? '' : 'Sin visitas con fecha cargada en este período todavía.';
+  const totVisits = buckets.reduce((s, b) => s + b.visits, 0);
+  const totQualVisit = buckets.reduce((s, b) => s + b.qualifiedVisit, 0);
+  document.getElementById('fechaVisitaTable').innerHTML = totVisits ? `
+    <thead><tr><th>Período</th><th>Visitas</th><th>Visita calificada</th><th>Tasa de visita calificada</th></tr></thead>
+    <tbody>
+      ${buckets.map(b => {
+        const rate = b.visits ? b.qualifiedVisit / b.visits * 100 : null;
+        return `<tr>
+          <td class="label-cell" data-sort="${b.start}">${bucketLabel(b)}</td>
+          <td data-sort="${b.visits}">${fmtInt(b.visits)}</td>
+          <td data-sort="${b.qualifiedVisit}">${fmtInt(b.qualifiedVisit)}</td>
+          <td data-sort="${rate ?? ''}">${fmtPct(rate)}</td>
+        </tr>`;
+      }).join('')}
+      <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(totVisits)}</td>
+        <td>${fmtInt(totQualVisit)}</td><td>${fmtPct(totVisits ? totQualVisit / totVisits * 100 : null)}</td></tr>
+    </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin visitas con fecha cargada en este período todavía.</td></tr></tbody>`;
+  makeSortable('fechaVisitaTable');
+}
+
+// ---- Calendario de visitas agendadas (independiente del filtro de fecha de arriba: un
+// calendario tiene sentido mostrarlo completo, no recortado por "últimos 7 días" etc.) ----
+const CAL_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const CAL_DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+let calState = null;
+
+function visitDayKey(l) {
+  const ad = argDateFromMs(l.fecha_visita * 1000);
+  return dateKey(ad.y, ad.m, ad.d);
+}
+function visitTimeLabel(l) {
+  const shifted = new Date(l.fecha_visita * 1000 + ARG_OFFSET_MS);
+  return `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+function renderCalendar() {
+  const scheduled = DATA.leads.filter(l => l.fecha_visita != null);
+  const wrap = document.getElementById('calendarWrap');
+  const noteEl = document.getElementById('calendarNote');
+  if (!scheduled.length) {
+    noteEl.textContent = 'Sin visitas cargadas todavía en Kommo — en cuanto el equipo complete "Fecha Visita" en un lead, va a aparecer acá.';
+    wrap.innerHTML = '<p class="empty-note">Sin datos para mostrar.</p>';
+    return;
+  }
+  noteEl.textContent = '';
+  const byDay = {};
+  for (const l of scheduled) {
+    const k = visitDayKey(l);
+    (byDay[k] = byDay[k] || []).push(l);
+  }
+  if (!calState) {
+    const keys = Object.keys(byDay).map(Number).sort((a, b) => a - b);
+    const future = keys.find(k => k >= todayKey);
+    const startKey = future != null ? future : keys[keys.length - 1];
+    const d = new Date(startKey);
+    calState = { y: d.getUTCFullYear(), m: d.getUTCMonth(), selectedKey: null };
+  }
+  const { y, m } = calState;
+  const firstOfMonth = dateKey(y, m, 1);
+  const firstWeekday = new Date(firstOfMonth).getUTCDay(); // 0=Dom..6=Sáb
+  const leadingBlanks = (firstWeekday + 6) % 7; // lunes primero
+  const totalDays = daysInMonth(y, m);
+  const cells = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(dateKey(y, m, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const selectedKey = (calState.selectedKey != null && byDay[calState.selectedKey])
+    ? calState.selectedKey : (byDay[todayKey] ? todayKey : null);
+
+  wrap.innerHTML = `
+    <div class="cal-nav">
+      <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Mes anterior">‹ Anterior</button>
+      <div class="cal-nav-label">${CAL_MESES[m]} ${y}</div>
+      <button class="cal-nav-btn" id="calNext" type="button" aria-label="Mes siguiente">Siguiente ›</button>
+    </div>
+    <div class="cal-grid">
+      ${CAL_DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+      ${cells.map(k => {
+        if (k == null) return '<div class="cal-day other-month"></div>';
+        const visits = byDay[k] || [];
+        const dayNum = new Date(k).getUTCDate();
+        const classes = ['cal-day'];
+        if (k === todayKey) classes.push('today');
+        if (visits.length) classes.push('has-visits');
+        if (k === selectedKey) classes.push('selected');
+        return `<div class="${classes.join(' ')}" data-day="${k}">
+          <span class="cal-day-num">${dayNum}</span>
+          ${visits.length ? `<span class="cal-day-badge">${visits.length}</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+    ${selectedKey != null ? `
+    <div class="cal-list">
+      <p class="cal-list-title">${keyToLabel(selectedKey)} de ${y} · ${byDay[selectedKey].length} visita${byDay[selectedKey].length === 1 ? '' : 's'}</p>
+      ${byDay[selectedKey].slice().sort((a, b) => a.fecha_visita - b.fecha_visita).map(l => `
+        <div class="cal-visit-row">
+          <span class="cal-visit-time">${visitTimeLabel(l)}</span>
+          <span>Lead #${l.id}${l.casa_visitada ? ' · ' + l.casa_visitada : ''}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
+          <span class="cal-visit-meta">${DATA.statuses[l.status_id] || ''}</span>
+        </div>`).join('')}
+    </div>` : ''}
+  `;
+  document.getElementById('calPrev').addEventListener('click', () => {
+    calState.m--; if (calState.m < 0) { calState.m = 11; calState.y--; }
+    calState.selectedKey = null;
+    renderCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', () => {
+    calState.m++; if (calState.m > 11) { calState.m = 0; calState.y++; }
+    calState.selectedKey = null;
+    renderCalendar();
+  });
+  wrap.querySelectorAll('.cal-day.has-visits').forEach(el => {
+    el.addEventListener('click', () => {
+      calState.selectedKey = Number(el.dataset.day);
+      renderCalendar();
+    });
+  });
 }
 
 // ============ Tab "Costos y recomendaciones" ============
@@ -1335,6 +1602,13 @@ function render(rangeKey) {
     </tbody>`;
   makeSortable('metaTable');
 
+  // ---- Tab "WIP" ----
+  renderFieldTable('fuenteTable', curLeads, 'fuente', 'Fuente');
+  document.getElementById('casaVisitadaNote').textContent =
+    curLeads.some(l => l.casa_visitada) ? '' : 'Sin datos cargados en Kommo todavía en este período.';
+  renderFieldTable('casaVisitadaTable', curLeads, 'casa_visitada', 'Casa Visitada');
+  renderFechaVisitaTable(r.start, r.end);
+
   // ---- Leads por desarrollo (list) ----
   const projEntries = Object.entries(curAgg.byTag).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const maxProj = Math.max(1, ...projEntries.map(([, v]) => v));
@@ -1374,6 +1648,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click
 }));
 
 render('allTime');
+renderCalendar();
 """
 
 html = (HTML_TEMPLATE
