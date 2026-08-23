@@ -863,14 +863,15 @@ function devLeadsByTagAndQualified(leads) {
 
 // ============ Tab "WIP" (Fuente / Casa Visitada / Fecha Visita) ============
 
-// Agrupa leads por un campo simple de Kommo (fuente, casa_visitada) con las mismas 3 métricas
+// Agrupa leads por un campo simple de Kommo (fuente, casa_visitada) con las mismas métricas
 // que se usan en el resto del dashboard: leads, con visita, visita calificada. Los leads sin
-// ese campo cargado en Kommo van a "(sin dato)" — no se descartan, para que el total siga
-// cuadrando con el resto de las tablas del período.
-function aggregateByField(leads, field) {
+// ese campo cargado en Kommo van a "(sin dato)" salvo que se pida excludeSinDato (útil para
+// Fuente, donde esa fila no aporta nada porque casi ningún lead la tiene cargada).
+function aggregateByField(leads, field, excludeSinDato) {
   const byVal = {};
   for (const l of leads) {
     const val = l[field] || '(sin dato)';
+    if (excludeSinDato && val === '(sin dato)') continue;
     if (!byVal[val]) byVal[val] = { leads: 0, visit: 0, qualifiedVisit: 0 };
     byVal[val].leads++;
     if (DATA.qualified_ids.includes(l.status_id)) byVal[val].visit++;
@@ -879,8 +880,12 @@ function aggregateByField(leads, field) {
   return byVal;
 }
 
-function renderFieldTable(tableId, leads, field, colLabel) {
-  const byVal = aggregateByField(leads, field);
+// Nota: sin columna "Tasa de visita" a propósito -- en Casa Visitada es tautológica (ese campo
+// solo se carga cuando YA hubo una visita, así que siempre da ~100%) y se sacó también de
+// Fuente por consistencia. "Tasa de visita calificada" sí se queda: mide algo real (de los que
+// visitaron, cuántos avanzaron a una etapa calificada).
+function renderFieldTable(tableId, leads, field, colLabel, excludeSinDato) {
+  const byVal = aggregateByField(leads, field, excludeSinDato);
   const rows = Object.entries(byVal).sort((a, b) => b[1].leads - a[1].leads);
   const total = rows.reduce((s, [, v]) => s + v.leads, 0);
   const totVisit = rows.reduce((s, [, v]) => s + v.visit, 0);
@@ -888,24 +893,21 @@ function renderFieldTable(tableId, leads, field, colLabel) {
   document.getElementById(tableId).innerHTML = rows.length ? `
     <thead><tr>
       <th>${colLabel}</th><th>Leads</th><th>Con visita</th><th>Visita calificada</th>
-      <th>Tasa de visita</th><th>Tasa de visita calificada</th>
+      <th>Tasa de visita calificada</th>
     </tr></thead>
     <tbody>
       ${rows.map(([name, v]) => {
-        const rate = v.leads ? v.visit / v.leads * 100 : null;
         const qualRate = v.leads ? v.qualifiedVisit / v.leads * 100 : null;
         return `<tr>
           <td class="label-cell" data-sort="${name}">${name}</td>
           <td data-sort="${v.leads}">${fmtInt(v.leads)}</td>
           <td data-sort="${v.visit}">${fmtInt(v.visit)}</td>
           <td data-sort="${v.qualifiedVisit}">${fmtInt(v.qualifiedVisit)}</td>
-          <td data-sort="${rate ?? ''}">${fmtPct(rate)}</td>
           <td data-sort="${qualRate ?? ''}">${fmtPct(qualRate)}</td>
         </tr>`;
       }).join('')}
       <tr class="total-row"><td class="label-cell">Total</td>
         <td>${fmtInt(total)}</td><td>${fmtInt(totVisit)}</td><td>${fmtInt(totQualVisit)}</td>
-        <td>${fmtPct(total ? totVisit / total * 100 : null)}</td>
         <td>${fmtPct(total ? totQualVisit / total * 100 : null)}</td></tr>
     </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin leads en este período.</td></tr></tbody>`;
   makeSortable(tableId);
@@ -1598,7 +1600,7 @@ function render(rangeKey) {
   makeSortable('metaTable');
 
   // ---- Tab "WIP" (el calendario no depende del filtro de fecha -- se renderiza aparte, ver renderCalendar()) ----
-  renderFieldTable('fuenteTable', curLeads, 'fuente', 'Fuente');
+  renderFieldTable('fuenteTable', curLeads, 'fuente', 'Fuente', true);
   document.getElementById('casaVisitadaNote').textContent =
     curLeads.some(l => l.casa_visitada) ? '' : 'Sin datos cargados en Kommo todavía en este período.';
   renderFieldTable('casaVisitadaTable', curLeads, 'casa_visitada', 'Casa Visitada');
