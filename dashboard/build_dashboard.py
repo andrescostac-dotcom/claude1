@@ -398,7 +398,7 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .tab-panel[hidden] { display: none; }
 @media (max-width: 480px) { .tab-btn { font-size: 12.5px; padding: 10px 14px; } }
 
-/* Calendario de visitas agendadas (pestaña WIP) */
+/* Calendario de visitas agendadas (pestaña Calendario) */
 .cal-toolbar {
   display: flex; gap: 4px; margin: 0 0 14px; padding: 4px; width: fit-content; max-width: 100%;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 100px;
@@ -553,8 +553,8 @@ __CSS__
 
   <div class="tab-bar" id="tabBar" role="tablist">
     <button class="tab-btn active" data-tab="resumen" role="tab" aria-selected="true">Resumen</button>
-    <button class="tab-btn" data-tab="costos" role="tab" aria-selected="false">Costos y recomendaciones</button>
-    <button class="tab-btn" data-tab="wip" role="tab" aria-selected="false">WIP</button>
+    <button class="tab-btn" data-tab="costos" role="tab" aria-selected="false">Costos y Resultados</button>
+    <button class="tab-btn" data-tab="wip" role="tab" aria-selected="false">Calendario</button>
   </div>
 
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
@@ -630,16 +630,6 @@ __CSS__
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
     </div>
 
-  </div>
-
-  <div class="tab-panel" id="tab-wip" role="tabpanel" hidden>
-
-    <div class="panel wide-panel">
-      <h2>Calendario de visitas agendadas</h2>
-      <p class="panel-sub">Hora y Casa Visitada de cada lead con visita cargada en Kommo — para que el equipo de ventas tenga visibilidad de un vistazo y no se pierda ninguna reunión. Cada casa tiene un color distinto. <span id="calendarNote"></span></p>
-      <div id="calendarWrap"></div>
-    </div>
-
     <div class="panel wide-panel">
       <h2>Leads por Fuente</h2>
       <p class="panel-sub">Campo "Fuente" de Kommo, cargado a mano por el equipo de ventas — no todos los leads lo tienen cargado, así que no suma el total de leads del período.</p>
@@ -650,6 +640,16 @@ __CSS__
       <h2>Leads por Casa Visitada</h2>
       <p class="panel-sub">Campo "Casa Visitada" de Kommo. <span id="casaVisitadaNote"></span></p>
       <div class="table-scroll"><table class="data-table" id="casaVisitadaTable"></table></div>
+    </div>
+
+  </div>
+
+  <div class="tab-panel" id="tab-wip" role="tabpanel" hidden>
+
+    <div class="panel wide-panel">
+      <h2>Calendario de visitas agendadas</h2>
+      <p class="panel-sub">Hora y Casa Visitada de cada lead con visita cargada en Kommo — para que el equipo de ventas tenga visibilidad de un vistazo y no se pierda ninguna reunión. Cada casa tiene un color distinto. <span id="calendarNote"></span></p>
+      <div id="calendarWrap"></div>
     </div>
 
   </div>
@@ -912,7 +912,7 @@ function devLeadsByTagAndQualified(leads) {
   return byTag;
 }
 
-// ============ Tab "WIP" (Fuente / Casa Visitada / Fecha Visita) ============
+// ============ Tablas por Fuente / Casa Visitada (pestaña "Costos y Resultados") ============
 
 // Agrupa leads por un campo simple de Kommo (fuente, casa_visitada) con las mismas métricas
 // que se usan en el resto del dashboard: leads, con visita, visita calificada. Los leads sin
@@ -1201,7 +1201,7 @@ function renderCalendarWeek(wrap, toolbarHtml, legendHtml, byDay, colorFor) {
   });
 }
 
-// ============ Tab "Costos y recomendaciones" ============
+// ============ Tab "Costos y Resultados" ============
 
 function buildBuckets(startKey, endKey) {
   // Diario si el rango elegido es corto (<=21 días), semanal si es más largo — así el
@@ -1752,7 +1752,7 @@ function render(rangeKey) {
     </tbody>`;
   makeSortable('metaTable');
 
-  // ---- Tab "WIP" (el calendario no depende del filtro de fecha -- se renderiza aparte, ver renderCalendar()) ----
+  // ---- Tablas por Fuente / Casa Visitada (pestaña "Costos y Resultados") ----
   renderFieldTable('fuenteTable', curLeads, 'fuente', 'Fuente', true);
   document.getElementById('casaVisitadaNote').textContent =
     curLeads.some(l => l.casa_visitada) ? '' : 'Sin datos cargados en Kommo todavía en este período.';
@@ -1768,7 +1768,7 @@ function render(rangeKey) {
       <div class="bar-value">${fmtInt(count)}</div>
     </div>`).join('') : '<p class="empty-note">Sin leads en este período.</p>';
 
-  // ---- Tab "Costos y recomendaciones" ----
+  // ---- Tab "Costos y Resultados" ----
   const buckets = buildBuckets(r.start, r.end).map(computeBucketMetrics);
   document.getElementById('costCharts').innerHTML = `
     <div class="chart-card"><h3>Costo por lead nuevo</h3><p class="chart-caption">Inversión total en Meta Ads / leads generados</p><div id="chartLead"></div></div>
