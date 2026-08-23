@@ -755,18 +755,20 @@ function aggregateLeads(leads) {
 }
 
 function devLeadsByTagAndQualified(leads) {
-  const byTag = {}; // tag -> {leads, qualified, spend}
+  const byTag = {}; // tag -> {leads, qualified, qualifiedVisit}
   for (const l of leads) {
     const qualified = DATA.qualified_ids.includes(l.status_id);
+    const qualifiedVisit = DATA.qualified_visit_ids.includes(l.status_id);
     const seen = new Set();
     for (const t of l.tags) {
       if (DATA.exclude_tags.includes(t)) continue;
       const c = canonicalTag(t);
       if (seen.has(c)) continue;
       seen.add(c);
-      if (!byTag[c]) byTag[c] = { leads: 0, qualified: 0 };
+      if (!byTag[c]) byTag[c] = { leads: 0, qualified: 0, qualifiedVisit: 0 };
       byTag[c].leads++;
       if (qualified) byTag[c].qualified++;
+      if (qualifiedVisit) byTag[c].qualifiedVisit++;
     }
   }
   return byTag;
@@ -1077,13 +1079,13 @@ function render(rangeKey) {
       { label: 'Leads con visita calificada', value: fmtInt(curAgg.qualifiedVisit), badge: badge(curAgg.qualifiedVisit, prevAgg.qualifiedVisit, true),
         sub: `${fmtPct(qualVisitRate)} del total · 2da reunión, negociación o ganado` },
     ]},
-    { title: 'Tasas de conversión', accent: 'var(--accent-blue)', items: [
+    { title: 'Tasas de conversión', accent: 'var(--accent-blue)', sortAsc: true, items: [
       { label: 'Tasa de conversión (visita)', value: fmtPct(qualRate), badge: qualRate === null ? '' : badge(qualRate, prevQualRate, true),
-        sub: 'leads con visita / total de leads' },
+        sub: 'leads con visita / total de leads', sortValue: qualRate },
       { label: 'Tasa de conversión (visita calificada)', value: fmtPct(qualVisitRate), badge: qualVisitRate === null ? '' : badge(qualVisitRate, prevQualVisitRate, true),
-        sub: 'leads con visita calificada / total de leads' },
+        sub: 'leads con visita calificada / total de leads', sortValue: qualVisitRate },
       { label: 'Tasa de conversión (WhatsApp)', value: fmtPct(waConvRate), badge: waConvRate === null ? '' : badge(waConvRate, prevWaConvRate, true),
-        sub: waConvRate === null ? 'sin conversaciones en el período' : `${fmtInt(curAgg.qualified)} con visita / ${fmtInt(whatsappCur.conversations)} conversaciones` },
+        sub: waConvRate === null ? 'sin conversaciones en el período' : `${fmtInt(curAgg.qualified)} con visita / ${fmtInt(whatsappCur.conversations)} conversaciones`, sortValue: waConvRate },
     ]},
     { title: 'Meta Ads', accent: 'var(--good)', items: [
       { label: 'Inversión en Meta Ads', value: fmtARS(curMeta.spend), badge: badge(curMeta.spend, prevMeta.spend, null),
@@ -1091,15 +1093,27 @@ function render(rangeKey) {
       { label: 'Conversaciones de WhatsApp', value: fmtInt(whatsappCur.conversations), badge: badge(whatsappCur.conversations, whatsappPrev.conversations, true),
         sub: 'Meta Ads · campaña de conversión' },
     ]},
-    { title: 'Costo por resultado', accent: 'var(--ink-muted)', items: [
+    { title: 'Costo por resultado', accent: 'var(--ink-muted)', sortAsc: true, items: [
       { label: 'Costo por visita', value: costPerVisitCur === null ? '—' : fmtARS(costPerVisitCur), badge: costPerVisitCur === null ? '' : badge(costPerVisitCur, costPerVisitPrev, false),
-        sub: 'inversión total en Meta Ads / leads con visita' },
+        sub: 'inversión total en Meta Ads / leads con visita', sortValue: costPerVisitCur },
       { label: 'Costo por visita calificada', value: costPerQualVisitCur === null ? '—' : fmtARS(costPerQualVisitCur), badge: costPerQualVisitCur === null ? '' : badge(costPerQualVisitCur, costPerQualVisitPrev, false),
-        sub: 'inversión total en Meta Ads / leads con visita calificada' },
+        sub: 'inversión total en Meta Ads / leads con visita calificada', sortValue: costPerQualVisitCur },
       { label: 'Costo por conversación', value: cpcCur === null ? '—' : fmtARS(cpcCur), badge: cpcCur === null ? '' : badge(cpcCur, cpcPrev, false),
-        sub: 'inversión en WhatsApp / conversaciones' },
+        sub: 'inversión en WhatsApp / conversaciones', sortValue: cpcCur },
     ]},
   ];
+  // "Tasas de conversión" y "Costo por resultado" van de menor a mayor según el valor real del
+  // período (no un orden fijo) — los sin dato (—) quedan siempre al final.
+  kpiGroups.forEach(g => {
+    if (!g.sortAsc) return;
+    g.items.sort((a, b) => {
+      const av = a.sortValue, bv = b.sortValue;
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return av - bv;
+    });
+  });
   document.getElementById('kpiGrid').innerHTML = kpiGroups.map(g => `
     <div class="kpi-section">
       <div class="kpi-section-head"><span class="kpi-section-title">${g.title}</span><span class="kpi-section-rule"></span></div>
@@ -1152,17 +1166,20 @@ function render(rangeKey) {
     const matchingAdset = Object.entries(DATA.adset_to_dev).find(([, dev]) => dev === name)?.[0];
     const spend = matchingAdset ? (curMeta.byAdset[matchingAdset]?.spend || 0) : 0;
     const hasSpend = !!matchingAdset;
-    const l = devLeads[name] || { leads: 0, qualified: 0 };
-    return { name, spend, hasSpend, leads: l.leads, qualified: l.qualified };
+    const l = devLeads[name] || { leads: 0, qualified: 0, qualifiedVisit: 0 };
+    return { name, spend, hasSpend, leads: l.leads, qualified: l.qualified, qualifiedVisit: l.qualifiedVisit };
   }).sort((a, b) => b.spend - a.spend);
-  const totalDev = devRows.reduce((acc, r) => ({ spend: acc.spend + r.spend, leads: acc.leads + r.leads, qualified: acc.qualified + r.qualified }), { spend: 0, leads: 0, qualified: 0 });
+  const totalDev = devRows.reduce((acc, r) => ({
+    spend: acc.spend + r.spend, leads: acc.leads + r.leads, qualified: acc.qualified + r.qualified, qualifiedVisit: acc.qualifiedVisit + r.qualifiedVisit,
+  }), { spend: 0, leads: 0, qualified: 0, qualifiedVisit: 0 });
   document.getElementById('devTable').innerHTML = `
-    <thead><tr><th>Desarrollo</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th><th>Inversión Meta</th><th>Costo / lead</th><th>Costo / lead con visita</th></tr></thead>
+    <thead><tr><th>Desarrollo</th><th>Leads</th><th>Con visita</th><th>Tasa de visita</th><th>Inversión Meta</th><th>Costo / lead</th><th>Costo / lead con visita</th><th>Costo / lead visita calificada</th></tr></thead>
     <tbody>
       ${devRows.map(r => {
         const rate = r.leads ? r.qualified / r.leads * 100 : null;
         const costLead = r.hasSpend && r.leads ? r.spend / r.leads : null;
         const costQual = r.hasSpend && r.qualified ? r.spend / r.qualified : null;
+        const costQualVisit = r.hasSpend && r.qualifiedVisit ? r.spend / r.qualifiedVisit : null;
         return `<tr>
         <td class="label-cell" data-sort="${r.name}">${r.name}</td>
         <td data-sort="${r.leads}">${fmtInt(r.leads)}</td>
@@ -1171,12 +1188,14 @@ function render(rangeKey) {
         <td data-sort="${r.hasSpend ? r.spend : ''}">${r.hasSpend ? fmtARS(r.spend) : '<span class="no-data">sin campaña propia</span>'}</td>
         <td data-sort="${costLead ?? ''}">${costLead != null ? fmtARS(costLead) : '—'}</td>
         <td data-sort="${costQual ?? ''}">${costQual != null ? fmtARS(costQual) : '—'}</td>
+        <td data-sort="${costQualVisit ?? ''}">${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
       </tr>`;
       }).join('')}
       <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(totalDev.leads)}</td><td>${fmtInt(totalDev.qualified)}</td>
         <td>${totalDev.leads ? fmtPct(totalDev.qualified / totalDev.leads * 100, 0) : '—'}</td>
         <td>${fmtARS(totalDev.spend)}</td><td>${totalDev.leads ? fmtARS(totalDev.spend / totalDev.leads) : '—'}</td>
-        <td>${totalDev.qualified ? fmtARS(totalDev.spend / totalDev.qualified) : '—'}</td></tr>
+        <td>${totalDev.qualified ? fmtARS(totalDev.spend / totalDev.qualified) : '—'}</td>
+        <td>${totalDev.qualifiedVisit ? fmtARS(totalDev.spend / totalDev.qualifiedVisit) : '—'}</td></tr>
     </tbody>`;
   makeSortable('devTable');
 
