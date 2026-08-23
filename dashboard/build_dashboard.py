@@ -944,16 +944,17 @@ const CAL_PALETTE = ['#E4572E', '#2E86AB', '#6A4C93', '#1B998B', '#C9A227', '#D6
 const CAL_NO_CASA_COLOR = '#8A8A8A';
 let calState = null;
 
+// Sin ningún corrimiento de huso horario: el usuario confirmó que el horario que ya trae
+// fecha_visita (leído tal cual con los getters UTC) es el horario correcto tal como aparece en
+// Kommo -- ni sumar ni restar ARG_OFFSET_MS (las 2 primeras versiones de este fix probaron cada
+// signo y ambas quedaban mal; la buena es no tocar nada).
 function visitDayKey(l) {
-  const ad = argDateFromMs(l.fecha_visita * 1000);
-  return dateKey(ad.y, ad.m, ad.d);
+  const d = new Date(l.fecha_visita * 1000);
+  return dateKey(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 function visitTimeLabel(l) {
-  // ARG es UTC-3: para pasar de epoch UTC a la hora de pared de Argentina hay que RESTAR el
-  // offset (no sumarlo) -- estaba sumado, por eso se mostraban 3hs de más (ej. 14:15 en vez
-  // de 11:15 real, reportado por el usuario).
-  const shifted = new Date(l.fecha_visita * 1000 - ARG_OFFSET_MS);
-  return `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`;
+  const d = new Date(l.fecha_visita * 1000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 // Asigna un color fijo de CAL_PALETTE a cada Casa Visitada distinta (orden alfabético, para
