@@ -147,6 +147,44 @@ múltiple, qué opciones tiene "Casa Visitada", etc.).
 archivo entero, igual que la vez pasada) y correr `syncAll` una vez. Los leads que no
 tengan estos campos cargados en Kommo van a aparecer con valor vacío — no rompe nada.
 
+## Tab "WIP" (agregado 23/8, ronda 3)
+
+Usa los 3 campos de arriba. Corrido el `syncAll` actualizado (23/8), en la Sheet:
+
+- **Fuente**: sí trae datos reales (IG, ZP, WA, Web, MELI, NDB, combinaciones) — pero
+  solo ~36 de 2236 leads lo tienen cargado (es un campo manual del equipo de ventas).
+- **Casa Visitada** y **Fecha Visita**: **0 de 2236 leads** tienen algo cargado,
+  incluso un lead "Logrado con éxito" que debería tener visita. No pude confirmar
+  todavía si es porque el equipo no usa esos 2 campos en la práctica, o si el
+  `field_id` (2444391 / 576940) no es el correcto — agregué `debugCustomFields()` al
+  `.gs` (imprime el `custom_fields_values` completo de un lead ganado) para
+  diagnosticarlo, pendiente de que el usuario lo corra y pase el resultado.
+
+Contenido de la pestaña (todas las tablas respetan el filtro de fecha de arriba, mismas
+métricas que el resto del dashboard — leads / con visita / visita calificada / tasas):
+
+- **"Leads por Fuente"**: `aggregateByField(leads, 'fuente')`. Los leads sin fuente
+  cargada van a la fila "(sin dato)" (no se descartan, así el total sigue cuadrando).
+- **"Leads por Casa Visitada"**: mismo patrón con `casa_visitada`. Hoy en día 100% en
+  "(sin dato)" — va a llenarse solo en cuanto Casa Visitada tenga datos reales.
+- **"Visitas por Fecha de Visita"**: a diferencia de todo el resto del dashboard (que
+  agrupa por `created_at`), esta tabla agrupa por la fecha REAL en la que ocurrió la
+  visita (`filterLeadsByVisitDate` + `computeVisitBucketMetrics`, mismos buckets
+  diario/semanal que `buildBuckets`) — sin el sesgo de rezago que tienen los gráficos
+  de costo de "Costos y recomendaciones". Hoy vacía por falta de datos en
+  `fecha_visita`.
+- **Calendario de visitas agendadas**: grilla mensual navegable (sin librerías
+  externas, `renderCalendar()`), agrupa `DATA.leads` con `fecha_visita` cargada por
+  día del mes visible; click/tap en un día con visitas muestra hora + lead + casa
+  visitada + desarrollo + estado. A propósito NO respeta el filtro de fecha de
+  arriba (un calendario recortado a "últimos 7 días" no tendría sentido) — arranca en
+  el mes de la próxima visita futura, o el de la más reciente si no hay futuras. Hoy
+  vacío por falta de datos en `fecha_visita`.
+
+Pendiente: una vez que el usuario confirme que Casa Visitada / Fecha Visita están bien
+mapeados (o corrija el `field_id`), correr un refresh y verificar visualmente que las 2
+tablas + el calendario se pueblan con datos reales.
+
 Ideas ya conversadas para una vez que haya datos reales:
 - **Fuente**: tabla de leads/visita/visita calificada por fuente (igual estructura que
   la tabla de UTM).
