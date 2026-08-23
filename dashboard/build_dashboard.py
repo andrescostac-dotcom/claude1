@@ -87,6 +87,9 @@ for r in lead_rows:
     price = get(r, "price")
     utm_campaign = (get(r, "utm_campaign") or "").strip()
     utm_content = (get(r, "utm_content") or "").strip()
+    casa_visitada = (get(r, "casa_visitada") or "").strip()
+    fuente = (get(r, "fuente") or "").strip()
+    fecha_visita = get(r, "fecha_visita")
     if status_id not in statuses:
         statuses[status_id] = status_name
         first_seen_status_order.append(status_id)
@@ -94,6 +97,10 @@ for r in lead_rows:
         created_epoch = calendar.timegm(created_at.timetuple())
     else:
         created_epoch = None
+    if isinstance(fecha_visita, datetime.datetime):
+        fecha_visita_epoch = calendar.timegm(fecha_visita.timetuple())
+    else:
+        fecha_visita_epoch = None
     tags = [t.strip() for t in desarrollos.split(",")] if desarrollos else []
     leads_out.append({
         "id": int(lid),
@@ -103,6 +110,9 @@ for r in lead_rows:
         "tags": tags,
         "utm_campaign": utm_campaign,
         "utm_content": utm_content,
+        "casa_visitada": casa_visitada,
+        "fuente": fuente,
+        "fecha_visita": fecha_visita_epoch,
     })
 
 status_order = {}

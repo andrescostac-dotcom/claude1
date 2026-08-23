@@ -125,6 +125,36 @@
   fecha arriba, se recalculan solas — "Últimos 7 días" da un reporte semanal,
   "El mes pasado" uno mensual, etc.
 
+## Campos nuevos de Kommo (agregado 23/8, ronda 2)
+
+Se agregaron 3 campos personalizados de Kommo, identificados por `field_id` (no por
+nombre, para evitar la ambigüedad que tuvo el matching flexible de UTM):
+
+- **Casa Visitada** (`field_id` 2444391) → columna `casa_visitada`
+- **Fuente** (`field_id` 578180) → columna `fuente`
+- **Fecha Visita** (`field_id` 576940, campo de tipo fecha) → columna `fecha_visita`
+
+`apps-script-sync.gs` ahora los extrae con `extractCustomFieldById` /
+`extractCustomFieldDateById` y los escribe como 3 columnas nuevas en la pestaña `Leads`.
+`build_dashboard.py` ya los lee y los suma a cada lead en el payload (`casa_visitada`,
+`fuente`, `fecha_visita` — este último como epoch, `null` si el lead no tiene fecha de
+visita cargada). Todavía no arman ninguna tabla/gráfico nuevo en el HTML — falta ver
+datos reales (no hay acceso a la API de Kommo desde este entorno, así que no pude
+confirmar en vivo qué valores devuelve cada campo: si "Fuente" es de selección simple o
+múltiple, qué opciones tiene "Casa Visitada", etc.).
+
+**Para activarlo**: pegar el `.gs` actualizado en el editor de Apps Script (reemplaza el
+archivo entero, igual que la vez pasada) y correr `syncAll` una vez. Los leads que no
+tengan estos campos cargados en Kommo van a aparecer con valor vacío — no rompe nada.
+
+Ideas ya conversadas para una vez que haya datos reales:
+- **Fuente**: tabla de leads/visita/visita calificada por fuente (igual estructura que
+  la tabla de UTM).
+- **Casa Visitada**: breakdown de qué casa/modelo se visita más.
+- **Fecha Visita**: resuelve el sesgo de rezago documentado abajo en "Costo por visita" —
+  se podría usar la fecha real de la visita en vez de `created_at` del lead para esos 2
+  gráficos, cuando el lead la tenga cargada (fallback a `created_at` si no).
+
 ## Nota sobre el orden del funnel
 
 `build_dashboard.py` define `STATUS_ORDER_HINT`: un orden inferido de los

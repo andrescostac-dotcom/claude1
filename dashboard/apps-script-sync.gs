@@ -99,6 +99,40 @@ function extractCustomField(customFields, patterns) {
   return '';
 }
 
+// IDs de campos personalizados de Kommo (Ajustes > Campos personalizados > Leads).
+// A diferencia de extractCustomField (matching por nombre, flexible pero ambiguo), acá el ID
+// es exacto — se pidieron directamente al usuario.
+const FIELD_CASA_VISITADA = 2444391;
+const FIELD_FUENTE = 578180;
+const FIELD_FECHA_VISITA = 576940;
+
+// Devuelve el/los valor(es) de un campo personalizado por field_id, como string. Sirve tanto
+// para campos de texto/selección simple (values[0].value) como multiselección (values.length > 1
+// -> se unen con ", ", igual que se hace con los tags de desarrollo).
+function extractCustomFieldById(customFields, fieldId) {
+  if (!customFields) return '';
+  const f = customFields.find(cf => cf.field_id === fieldId);
+  if (!f || !f.values) return '';
+  return f.values
+    .map(v => v.value)
+    .filter(v => v !== undefined && v !== null && v !== '')
+    .join(', ');
+}
+
+// Igual que extractCustomFieldById pero para campos tipo fecha: Kommo guarda esos campos como
+// timestamp unix (segundos). Devuelve un objeto Date de Apps Script, o '' si no hay valor.
+function extractCustomFieldDateById(customFields, fieldId) {
+  if (!customFields) return '';
+  const f = customFields.find(cf => cf.field_id === fieldId);
+  if (!f || !f.values || !f.values[0]) return '';
+  const raw = f.values[0].value;
+  if (raw === undefined || raw === null || raw === '') return '';
+  const n = Number(raw);
+  if (!isNaN(n) && n > 1000000000) return new Date(n * 1000);
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? '' : parsed;
+}
+
 function syncKommoLeads() {
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
@@ -125,6 +159,9 @@ function syncKommoLeads() {
       const devTags = [...new Set(rawTags.filter(t => !EXCLUDE_TAGS.includes(t)).map(canonicalTag))];
       const utmCampaign = extractCustomField(l.custom_fields_values, ['utmcampaign']);
       const utmContent = extractCustomField(l.custom_fields_values, ['utmcontent']);
+      const casaVisitada = extractCustomFieldById(l.custom_fields_values, FIELD_CASA_VISITADA);
+      const fuente = extractCustomFieldById(l.custom_fields_values, FIELD_FUENTE);
+      const fechaVisita = extractCustomFieldDateById(l.custom_fields_values, FIELD_FECHA_VISITA);
       rows.push([
         l.id,
         new Date(l.created_at * 1000),
@@ -137,6 +174,9 @@ function syncKommoLeads() {
         l.price || 0,
         utmCampaign,
         utmContent,
+        casaVisitada,
+        fuente,
+        fechaVisita,
       ]);
     }
     if (!data._links || !data._links.next) break;
@@ -146,9 +186,10 @@ function syncKommoLeads() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Leads') || ss.insertSheet('Leads');
   sheet.clear();
-  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content']);
+  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita']);
   if (rows.length) sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   sheet.getRange(2, 2, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  sheet.getRange(2, 14, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
 }
 
 function syncMetaDaily() {
