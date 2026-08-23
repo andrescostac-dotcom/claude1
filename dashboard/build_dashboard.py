@@ -95,8 +95,13 @@ for r in lead_rows:
     casa_visitada = (get(r, "casa_visitada") or "").strip()
     fuente = (get(r, "fuente") or "").strip()
     fecha_visita = get(r, "fecha_visita")
-    contact_name = (get(r, "contact_name") or "").strip()
-    phone = (get(r, "phone") or "").strip()
+    # Cuando un contacto de Kommo no tiene nombre cargado, el "nombre" que devuelve la API es
+    # directamente su teléfono como texto -- Sheets lo auto-detecta como número y pierde el
+    # formato (openpyxl lo devuelve como float, ej. 5491122864999.0). str(int(...)) lo deja
+    # como un número entero legible en vez de "5491122864999.0".
+    raw_name = get(r, "contact_name")
+    contact_name = str(int(raw_name)) if isinstance(raw_name, float) else str(raw_name or "").strip()
+    phone = str(get(r, "phone") or "").strip()
     if status_id not in statuses:
         statuses[status_id] = status_name
         first_seen_status_order.append(status_id)
