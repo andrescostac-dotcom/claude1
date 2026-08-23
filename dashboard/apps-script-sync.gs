@@ -79,22 +79,39 @@ function debugLead() {
   Logger.log(resp.getContentText());
 }
 
-// --- DEBUG: "Casa Visitada" y "Fecha Visita" salieron vacíos en TODOS los leads
-// (incluso en uno "Logrado con éxito"). Esta función imprime SOLO los custom_fields_values
-// de un lead que sabemos que tuvo visita/negociación, para confirmar si el campo 2444391 /
-// 576940 aparece con datos, o si el field_id está mal / el campo no se usa en esta cuenta.
+// --- DEBUG: "Casa Visitada" (2444391) y "Fecha Visita" (576940) salieron vacíos en TODOS
+// los leads (incluso en uno "Logrado con éxito"), a pesar de que el usuario confirmó esos IDs
+// como correctos. Esta función imprime:
+// 1) el custom_fields_values completo del lead (con field_id de cada uno, para ver si 2444391/
+//    576940 aparecen ahí con o sin valor).
+// 2) lo mismo para cada CONTACTO vinculado al lead — por si esos 2 campos viven en el contacto
+//    y no en el lead (posible explicación de por qué nunca aparecen del lado del lead).
 // Correr una vez desde el editor y pegarme el resultado (Ver > Registros o Ctrl+Enter).
 function debugCustomFields() {
   const LEAD_ID = 10143172; // "Logrado con éxito" — debería tener casa visitada y fecha de visita cargadas
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
   const headers = { Authorization: 'Bearer ' + token };
+
   const resp = UrlFetchApp.fetch(
-    `https://${subdomain}/api/v4/leads/${LEAD_ID}`,
+    `https://${subdomain}/api/v4/leads/${LEAD_ID}?with=contacts`,
     { headers, muteHttpExceptions: true });
-  Logger.log('HTTP ' + resp.getResponseCode());
+  Logger.log('HTTP lead: ' + resp.getResponseCode());
   const lead = JSON.parse(resp.getContentText());
+  Logger.log('--- LEAD custom_fields_values ---');
   Logger.log(JSON.stringify(lead.custom_fields_values, null, 2));
+
+  const contacts = (lead._embedded && lead._embedded.contacts) || [];
+  Logger.log(`--- ${contacts.length} contacto(s) vinculado(s) ---`);
+  for (const c of contacts) {
+    const cResp = UrlFetchApp.fetch(
+      `https://${subdomain}/api/v4/contacts/${c.id}`,
+      { headers, muteHttpExceptions: true });
+    Logger.log(`HTTP contacto ${c.id}: ` + cResp.getResponseCode());
+    const contact = JSON.parse(cResp.getContentText());
+    Logger.log(`--- CONTACTO ${c.id} custom_fields_values ---`);
+    Logger.log(JSON.stringify(contact.custom_fields_values, null, 2));
+  }
 }
 
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
@@ -129,7 +146,9 @@ const FIELD_FECHA_VISITA = 576940;
 // -> se unen con ", ", igual que se hace con los tags de desarrollo).
 function extractCustomFieldById(customFields, fieldId) {
   if (!customFields) return '';
-  const f = customFields.find(cf => cf.field_id === fieldId);
+  // Number(...) por las dudas de que la API devuelva field_id como string en algún caso —
+  // === estricto entre number y string nunca matchea y da falso "campo vacío".
+  const f = customFields.find(cf => Number(cf.field_id) === fieldId);
   if (!f || !f.values) return '';
   return f.values
     .map(v => v.value)
@@ -141,7 +160,7 @@ function extractCustomFieldById(customFields, fieldId) {
 // timestamp unix (segundos). Devuelve un objeto Date de Apps Script, o '' si no hay valor.
 function extractCustomFieldDateById(customFields, fieldId) {
   if (!customFields) return '';
-  const f = customFields.find(cf => cf.field_id === fieldId);
+  const f = customFields.find(cf => Number(cf.field_id) === fieldId);
   if (!f || !f.values || !f.values[0]) return '';
   const raw = f.values[0].value;
   if (raw === undefined || raw === null || raw === '') return '';
