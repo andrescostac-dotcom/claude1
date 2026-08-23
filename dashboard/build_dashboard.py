@@ -393,6 +393,9 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .cal-nav-btn:hover { border-color: var(--accent-teal); }
 .cal-nav-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
 .cal-nav-label { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 15px; text-transform: capitalize; text-align: center; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
+.cal-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-muted); }
+.cal-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .cal-dow { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); text-align: center; padding-bottom: 4px; font-weight: 600; }
 .cal-day {
@@ -405,28 +408,33 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 .cal-day.has-visits:hover { border-color: var(--accent-teal); background: var(--surface-2); }
 .cal-day.selected { background: color-mix(in srgb, var(--accent-teal) 16%, var(--surface)); border-color: var(--accent-teal); }
 .cal-day-num { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.cal-day-badge {
-  /* mismo verde fijo que .tab-btn.active (no var(--accent-teal)): con blanco encima da ~3:1,
-     insuficiente para WCAG AA — #146F42 da 6.2:1 en los dos temas */
-  align-self: flex-start; background: #146F42; color: #fff; border-radius: 100px;
-  font-size: 10.5px; font-weight: 700; padding: 1px 7px; font-variant-numeric: tabular-nums;
+.cal-day-events { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cal-event {
+  display: flex; align-items: center; gap: 4px; min-width: 0; padding: 1px 4px; border-radius: 5px;
+  background: var(--surface-2); font-size: 9.5px; line-height: 1.4;
 }
+.cal-event-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.cal-event-time { font-family: "IBM Plex Mono", monospace; font-weight: 700; color: var(--ink); flex-shrink: 0; }
+.cal-event-casa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); }
+.cal-more { font-size: 9px; color: var(--ink-muted); padding: 0 4px; }
 .cal-list { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; }
 .cal-list-title { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 14px; margin: 0 0 10px; }
 .cal-visit-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; flex-wrap: wrap; }
 .cal-visit-row:last-child { border-bottom: none; }
+.cal-visit-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .cal-visit-time { font-family: "IBM Plex Mono", monospace; font-weight: 700; color: var(--accent-blue); min-width: 44px; }
 .cal-visit-meta { color: var(--ink-muted); margin-left: auto; }
 @media (max-width: 640px) {
-  .cal-day { min-height: 46px; font-size: 11px; padding: 4px; }
+  .cal-day { min-height: 50px; font-size: 11px; padding: 4px; }
   .cal-grid { gap: 4px; }
+  .cal-event { font-size: 8.5px; }
   .cal-visit-meta { margin-left: 0; width: 100%; }
 }
 @media (max-width: 420px) {
   .cal-dow { font-size: 8.5px; }
   .cal-day-num { font-size: 10.5px; }
-  .cal-day-badge { font-size: 9px; padding: 1px 5px; }
   .cal-nav-label { font-size: 13px; }
+  .cal-legend-item { font-size: 11px; }
 }
 
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
@@ -576,6 +584,12 @@ __CSS__
   <div class="tab-panel" id="tab-wip" role="tabpanel" hidden>
 
     <div class="panel wide-panel">
+      <h2>Calendario de visitas agendadas</h2>
+      <p class="panel-sub">Hora y Casa Visitada de cada lead con visita cargada en Kommo — para que el equipo de ventas tenga visibilidad de un vistazo y no se pierda ninguna reunión. Cada casa tiene un color distinto. <span id="calendarNote"></span></p>
+      <div id="calendarWrap"></div>
+    </div>
+
+    <div class="panel wide-panel">
       <h2>Leads por Fuente</h2>
       <p class="panel-sub">Campo "Fuente" de Kommo, cargado a mano por el equipo de ventas — no todos los leads lo tienen cargado, así que no suma el total de leads del período.</p>
       <div class="table-scroll"><table class="data-table" id="fuenteTable"></table></div>
@@ -585,18 +599,6 @@ __CSS__
       <h2>Leads por Casa Visitada</h2>
       <p class="panel-sub">Campo "Casa Visitada" de Kommo. <span id="casaVisitadaNote"></span></p>
       <div class="table-scroll"><table class="data-table" id="casaVisitadaTable"></table></div>
-    </div>
-
-    <div class="panel wide-panel">
-      <h2>Visitas por Fecha de Visita</h2>
-      <p class="panel-sub">Usa la fecha real de la visita (campo "Fecha Visita" de Kommo) en vez de la fecha de creación del lead — a diferencia de los gráficos de costo de la pestaña "Costos y recomendaciones", acá no hay sesgo de rezago. <span id="fechaVisitaNote"></span></p>
-      <div class="table-scroll"><table class="data-table" id="fechaVisitaTable"></table></div>
-    </div>
-
-    <div class="panel wide-panel">
-      <h2>Calendario de visitas agendadas</h2>
-      <p class="panel-sub">Fecha y hora de cada lead con visita cargada en Kommo (campo "Fecha Visita") — para saber de un vistazo cuándo son. <span id="calendarNote"></span></p>
-      <div id="calendarWrap"></div>
     </div>
 
   </div>
@@ -909,51 +911,16 @@ function renderFieldTable(tableId, leads, field, colLabel) {
   makeSortable(tableId);
 }
 
-// A diferencia de filterLeads (que filtra por created_at, la fecha en que se generó el lead),
-// esta usa fecha_visita — la fecha real en que ocurrió (u ocurre) la visita. Deja afuera los
-// leads que no tienen ese campo cargado en Kommo.
-function filterLeadsByVisitDate(startKey, endKey) {
-  const s = keyToArgUtcStart(startKey) / 1000;
-  const e = keyToArgUtcStart(addDaysKey(endKey, 1)) / 1000;
-  return DATA.leads.filter(l => l.fecha_visita != null && l.fecha_visita >= s && l.fecha_visita < e);
-}
-
-function computeVisitBucketMetrics(b) {
-  const leads = filterLeadsByVisitDate(b.start, b.end);
-  let qualifiedVisit = 0;
-  for (const l of leads) if (DATA.qualified_visit_ids.includes(l.status_id)) qualifiedVisit++;
-  return { ...b, visits: leads.length, qualifiedVisit };
-}
-
-function renderFechaVisitaTable(startKey, endKey) {
-  const buckets = buildBuckets(startKey, endKey).map(computeVisitBucketMetrics);
-  const withData = buckets.filter(b => b.visits > 0);
-  document.getElementById('fechaVisitaNote').textContent = withData.length
-    ? '' : 'Sin visitas con fecha cargada en este período todavía.';
-  const totVisits = buckets.reduce((s, b) => s + b.visits, 0);
-  const totQualVisit = buckets.reduce((s, b) => s + b.qualifiedVisit, 0);
-  document.getElementById('fechaVisitaTable').innerHTML = totVisits ? `
-    <thead><tr><th>Período</th><th>Visitas</th><th>Visita calificada</th><th>Tasa de visita calificada</th></tr></thead>
-    <tbody>
-      ${buckets.map(b => {
-        const rate = b.visits ? b.qualifiedVisit / b.visits * 100 : null;
-        return `<tr>
-          <td class="label-cell" data-sort="${b.start}">${bucketLabel(b)}</td>
-          <td data-sort="${b.visits}">${fmtInt(b.visits)}</td>
-          <td data-sort="${b.qualifiedVisit}">${fmtInt(b.qualifiedVisit)}</td>
-          <td data-sort="${rate ?? ''}">${fmtPct(rate)}</td>
-        </tr>`;
-      }).join('')}
-      <tr class="total-row"><td class="label-cell">Total</td><td>${fmtInt(totVisits)}</td>
-        <td>${fmtInt(totQualVisit)}</td><td>${fmtPct(totVisits ? totQualVisit / totVisits * 100 : null)}</td></tr>
-    </tbody>` : `<tbody><tr><td class="empty-note" style="border-bottom:none;">Sin visitas con fecha cargada en este período todavía.</td></tr></tbody>`;
-  makeSortable('fechaVisitaTable');
-}
-
 // ---- Calendario de visitas agendadas (independiente del filtro de fecha de arriba: un
 // calendario tiene sentido mostrarlo completo, no recortado por "últimos 7 días" etc.) ----
 const CAL_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const CAL_DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+// Paleta fija (no var(--accent-*) del tema) para que cada Casa Visitada tenga un color estable
+// y distinguible a simple vista, en los dos temas — se asigna por orden alfabético la primera
+// vez que se ve cada valor, así no cambia de una recarga a otra mientras las casas sean las
+// mismas. Gris para leads sin Casa Visitada cargada.
+const CAL_PALETTE = ['#E4572E', '#2E86AB', '#6A4C93', '#1B998B', '#C9A227', '#D64550', '#3DA35D', '#8E5572', '#4C6EF5', '#B5838D'];
+const CAL_NO_CASA_COLOR = '#8A8A8A';
 let calState = null;
 
 function visitDayKey(l) {
@@ -963,6 +930,17 @@ function visitDayKey(l) {
 function visitTimeLabel(l) {
   const shifted = new Date(l.fecha_visita * 1000 + ARG_OFFSET_MS);
   return `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+// Asigna un color fijo de CAL_PALETTE a cada Casa Visitada distinta (orden alfabético, para
+// que no cambie de una recarga a otra mientras las casas sean las mismas). Se arma sobre TODOS
+// los leads con visita agendada (no solo el mes visible), así el color de "Chubut" no cambia
+// al navegar de mes.
+function buildCasaColorMap(leads) {
+  const casas = [...new Set(leads.map(l => l.casa_visitada).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const map = {};
+  casas.forEach((c, i) => { map[c] = CAL_PALETTE[i % CAL_PALETTE.length]; });
+  return map;
 }
 
 function renderCalendar() {
@@ -975,6 +953,8 @@ function renderCalendar() {
     return;
   }
   noteEl.textContent = '';
+  const casaColors = buildCasaColorMap(scheduled);
+  const colorFor = casa => (casa && casaColors[casa]) || CAL_NO_CASA_COLOR;
   const byDay = {};
   for (const l of scheduled) {
     const k = visitDayKey(l);
@@ -1000,25 +980,39 @@ function renderCalendar() {
   const selectedKey = (calState.selectedKey != null && byDay[calState.selectedKey])
     ? calState.selectedKey : (byDay[todayKey] ? todayKey : null);
 
+  // En pantallas chicas mostramos menos chips por día antes de resumir en "+N más", para que
+  // no se desborde la celda -- se relee en cada render así responde a un resize/rotación.
+  const maxShown = window.innerWidth <= 480 ? 2 : 3;
+
   wrap.innerHTML = `
     <div class="cal-nav">
       <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Mes anterior">‹ Anterior</button>
       <div class="cal-nav-label">${CAL_MESES[m]} ${y}</div>
       <button class="cal-nav-btn" id="calNext" type="button" aria-label="Mes siguiente">Siguiente ›</button>
     </div>
+    ${Object.keys(casaColors).length ? `
+    <div class="cal-legend">
+      ${Object.entries(casaColors).map(([casa, color]) => `<span class="cal-legend-item"><span class="cal-legend-dot" style="background:${color}"></span>${casa}</span>`).join('')}
+    </div>` : ''}
     <div class="cal-grid">
       ${CAL_DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
       ${cells.map(k => {
         if (k == null) return '<div class="cal-day other-month"></div>';
-        const visits = byDay[k] || [];
+        const visits = (byDay[k] || []).slice().sort((a, b) => a.fecha_visita - b.fecha_visita);
         const dayNum = new Date(k).getUTCDate();
         const classes = ['cal-day'];
         if (k === todayKey) classes.push('today');
         if (visits.length) classes.push('has-visits');
         if (k === selectedKey) classes.push('selected');
+        const shown = visits.slice(0, maxShown);
+        const extra = visits.length - shown.length;
         return `<div class="${classes.join(' ')}" data-day="${k}">
           <span class="cal-day-num">${dayNum}</span>
-          ${visits.length ? `<span class="cal-day-badge">${visits.length}</span>` : ''}
+          ${visits.length ? `
+          <div class="cal-day-events">
+            ${shown.map(l => `<div class="cal-event"><span class="cal-event-dot" style="background:${colorFor(l.casa_visitada)}"></span><span class="cal-event-time">${visitTimeLabel(l)}</span><span class="cal-event-casa">${l.casa_visitada || 'Visita'}</span></div>`).join('')}
+            ${extra > 0 ? `<div class="cal-more">+${extra} más</div>` : ''}
+          </div>` : ''}
         </div>`;
       }).join('')}
     </div>
@@ -1027,8 +1021,9 @@ function renderCalendar() {
       <p class="cal-list-title">${keyToLabel(selectedKey)} de ${y} · ${byDay[selectedKey].length} visita${byDay[selectedKey].length === 1 ? '' : 's'}</p>
       ${byDay[selectedKey].slice().sort((a, b) => a.fecha_visita - b.fecha_visita).map(l => `
         <div class="cal-visit-row">
+          <span class="cal-visit-dot" style="background:${colorFor(l.casa_visitada)}"></span>
           <span class="cal-visit-time">${visitTimeLabel(l)}</span>
-          <span>Lead #${l.id}${l.casa_visitada ? ' · ' + l.casa_visitada : ''}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
+          <span>${l.casa_visitada || 'Sin casa cargada'} · Lead #${l.id}${l.tags.length ? ' · ' + l.tags.join(', ') : ''}</span>
           <span class="cal-visit-meta">${DATA.statuses[l.status_id] || ''}</span>
         </div>`).join('')}
     </div>` : ''}
@@ -1602,12 +1597,11 @@ function render(rangeKey) {
     </tbody>`;
   makeSortable('metaTable');
 
-  // ---- Tab "WIP" ----
+  // ---- Tab "WIP" (el calendario no depende del filtro de fecha -- se renderiza aparte, ver renderCalendar()) ----
   renderFieldTable('fuenteTable', curLeads, 'fuente', 'Fuente');
   document.getElementById('casaVisitadaNote').textContent =
     curLeads.some(l => l.casa_visitada) ? '' : 'Sin datos cargados en Kommo todavía en este período.';
   renderFieldTable('casaVisitadaTable', curLeads, 'casa_visitada', 'Casa Visitada');
-  renderFechaVisitaTable(r.start, r.end);
 
   // ---- Leads por desarrollo (list) ----
   const projEntries = Object.entries(curAgg.byTag).sort((a, b) => b[1] - a[1]).slice(0, 8);
