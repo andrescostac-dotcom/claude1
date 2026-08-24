@@ -669,13 +669,35 @@ __JS__
 """
 
 JS = r"""
-const ARG_OFFSET_MS = 3 * 3600 * 1000;
 const fmtInt = n => Math.round(n).toLocaleString('es-AR');
 const fmtARS = n => '$' + Math.round(n).toLocaleString('es-AR');
 const fmtPct = (n, d=1) => (n === null || n === undefined || isNaN(n)) ? '—' : n.toFixed(d) + '%';
 
-function argDateFromMs(ms) {
-  const shifted = new Date(ms + ARG_OFFSET_MS);
+// --- Huso horario Argentina (UTC-3) -- dos casos MUY distintos, no confundir ---
+// 1) l.created_at / l.fecha_visita: pasan por Apps Script (new Date(epoch*1000)) -> celda de
+//    Google Sheets (que las guarda/exporta ya convertidas a la hora de Argentina, el huso del
+//    documento) -> Python (calendar.timegm, que interpreta ese valor leído como si fuera UTC).
+//    Por esa doble conversión el epoch que llega acá YA representa la hora de pared de
+//    Argentina -- no hace falta correr nada más. Confirmado en vivo con el horario del
+//    calendario de visitas (24/8): sumar o restar 3hs daba mal en los dos casos, la única
+//    versión correcta era no tocar nada.
+// 2) "ahora" en el navegador (new Date() / Date.now()): es un instante UTC real, no pasa por
+//    ninguna planilla -- para éste sí hay que restar 3hs (ARG = UTC-3) antes de leer los
+//    campos de fecha. Antes se sumaban acá también (mismo código para los dos casos), lo que
+//    adelantaba "hoy" un día entero durante una ventana de ~3hs cada noche (UTC 21-24hs = ARG
+//    18-21hs) -- eso es lo que rompía los filtros "Ayer" / "Últimos 7 días" justo en ese
+//    horario: terminaban incluyendo el día en curso (con datos incompletos) en vez de pararse
+//    en el último día completo.
+const ARG_OFFSET_MS = 3 * 3600 * 1000;
+
+// Caso (1): fecha calendario de un timestamp de lead/visita, tal cual llega, sin corrimiento.
+function leadDateFromEpochSec(sec) {
+  const d = new Date(sec * 1000);
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate() };
+}
+// Caso (2): fecha calendario de Argentina a partir de un instante UTC real (ej. Date.now()).
+function nowToArgDate(ms) {
+  const shifted = new Date(ms - ARG_OFFSET_MS);
   return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth(), d: shifted.getUTCDate() };
 }
 function dateKey(y, m, d) { return new Date(Date.UTC(y, m, d)).getTime(); }
@@ -689,12 +711,15 @@ function keyToLabel(key) {
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   return `${dt.getUTCDate()} ${meses[dt.getUTCMonth()]}`;
 }
-function keyToArgUtcStart(key) { return key - ARG_OFFSET_MS; } // ms epoch (UTC) of ARG midnight for that calendar date
 function daysInMonth(y, m) { return new Date(Date.UTC(y, m+1, 0)).getUTCDate(); }
 
 const now = new Date();
-const today = argDateFromMs(now.getTime());
+const today = nowToArgDate(now.getTime());
 const todayKey = dateKey(today.y, today.m, today.d);
+// El sync corre 1 vez por día y Meta a veces reporta el gasto del día con retraso -- los datos
+// de HOY casi siempre están incompletos. Todos los rangos relativos usan como límite el último
+// día completo (ayer), nunca el día en curso.
+const lastCompleteDayKey = addDaysKey(todayKey, -1);
 
 function minDataKey() {
   // Earliest date across all leads + all Meta rows, so "Todo el período" always
@@ -702,7 +727,7 @@ function minDataKey() {
   let minKey = todayKey;
   for (const l of DATA.leads) {
     if (l.created_at == null) continue;
-    const ad = argDateFromMs(l.created_at * 1000);
+    const ad = leadDateFromEpochSec(l.created_at);
     const k = dateKey(ad.y, ad.m, ad.d);
     if (k < minKey) minKey = k;
   }
@@ -716,9 +741,13 @@ function minDataKey() {
 
 function buildRanges() {
   const yStart = addDaysKey(todayKey, -1), yEnd = yStart;
-  const l7Start = addDaysKey(todayKey, -7), l7End = addDaysKey(todayKey, -1);
-  const l30Start = addDaysKey(todayKey, -30), l30End = addDaysKey(todayKey, -1);
-  const thisMonthStart = dateKey(today.y, today.m, 1), thisMonthEnd = todayKey;
+  const l7Start = addDaysKey(todayKey, -7), l7End = lastCompleteDayKey;
+  const l30Start = addDaysKey(todayKey, -30), l30End = lastCompleteDayKey;
+  const thisMonthStart = dateKey(today.y, today.m, 1);
+  // Si hoy es el día 1 del mes todavía no hay ningún día completo de este mes -- el rango
+  // queda vacío a propósito (mejor que mostrar el día en curso, que es justo lo que hay que
+  // evitar).
+  const thisMonthEnd = lastCompleteDayKey >= thisMonthStart ? lastCompleteDayKey : thisMonthStart - 86400000;
   const lastMonthY = today.m === 0 ? today.y - 1 : today.y;
   const lastMonthM = today.m === 0 ? 11 : today.m - 1;
   const lastMonthStart = dateKey(lastMonthY, lastMonthM, 1);
@@ -726,11 +755,11 @@ function buildRanges() {
 
   const prevLastMonthY = lastMonthM === 0 ? lastMonthY - 1 : lastMonthY;
   const prevLastMonthM = lastMonthM === 0 ? 11 : lastMonthM - 1;
-  const mtdDayCount = today.d;
+  const mtdDayCount = thisMonthEnd >= thisMonthStart ? Math.round((thisMonthEnd - thisMonthStart) / 86400000) + 1 : 0;
   const prevMtdEndDay = Math.min(mtdDayCount, daysInMonth(prevLastMonthY, prevLastMonthM));
 
   return {
-    allTime: { label: 'Todo el período', start: minDataKey(), end: todayKey,
+    allTime: { label: 'Todo el período', start: minDataKey(), end: lastCompleteDayKey,
       prevStart: null, prevEnd: null },
     yesterday: { label: 'Ayer', start: yStart, end: yEnd,
       prevStart: addDaysKey(yStart, -1), prevEnd: addDaysKey(yEnd, -1) },
@@ -751,8 +780,10 @@ function filterMetaDaily(startKey, endKey) {
   return DATA.meta_daily.filter(r => r.date >= s && r.date <= e);
 }
 function filterLeads(startKey, endKey) {
-  const s = keyToArgUtcStart(startKey) / 1000;
-  const e = keyToArgUtcStart(addDaysKey(endKey, 1)) / 1000;
+  // Los timestamps de leads ya vienen en la convención "sin corrimiento" (ver el comentario
+  // grande de ARG_OFFSET_MS más arriba) -- comparan directo contra los keys, sin restar nada.
+  const s = startKey / 1000;
+  const e = addDaysKey(endKey, 1) / 1000;
   return DATA.leads.filter(l => l.created_at >= s && l.created_at < e);
 }
 
@@ -976,13 +1007,10 @@ const CAL_PALETTE = ['#E4572E', '#2E86AB', '#6A4C93', '#1B998B', '#C9A227', '#D6
 const CAL_NO_CASA_COLOR = '#8A8A8A';
 let calState = null;
 
-// Sin ningún corrimiento de huso horario: el usuario confirmó que el horario que ya trae
-// fecha_visita (leído tal cual con los getters UTC) es el horario correcto tal como aparece en
-// Kommo -- ni sumar ni restar ARG_OFFSET_MS (las 2 primeras versiones de este fix probaron cada
-// signo y ambas quedaban mal; la buena es no tocar nada).
+// Mismo caso (1) del comentario grande de ARG_OFFSET_MS más arriba: sin ningún corrimiento.
 function visitDayKey(l) {
-  const d = new Date(l.fecha_visita * 1000);
-  return dateKey(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const ad = leadDateFromEpochSec(l.fecha_visita);
+  return dateKey(ad.y, ad.m, ad.d);
 }
 function visitTimeLabel(l) {
   const d = new Date(l.fecha_visita * 1000);
