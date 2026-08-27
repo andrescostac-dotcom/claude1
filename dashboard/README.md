@@ -3,12 +3,10 @@
 ## Cómo está armado
 
 1. **Google Apps Script** (`apps-script-sync.gs`, instalado por el usuario en su
-   Google Sheet) corre cada 12 horas (antes era 1 vez por día, ver
-   `SYNC_INTERVAL_HOURS` — cambiado el 27/8 a pedido del usuario, para que una
-   visita agendada no tarde hasta 24hs en aparecer en el calendario), pega las
-   credenciales de Kommo CRM y Meta Ads (guardadas en Propiedades del Script de
-   Google, nunca visibles para Claude) y escribe 3 pestañas en la Sheet:
-   `Leads`, `MetaDaily`, `Meta` (timestamp del último sync).
+   Google Sheet) corre todos los días a las 8am ARG, pega las credenciales de
+   Kommo CRM y Meta Ads (guardadas en Propiedades del Script de Google, nunca
+   visibles para Claude) y escribe 3 pestañas en la Sheet: `Leads`,
+   `MetaDaily`, `Meta` (timestamp del último sync).
 
 2. **La Google Sheet** ("Claude Dashboard", propiedad de info@coscor.life):
    - fileId: `1WzajqMMHfH8YidFIkZJI328_Rf2FPl6f7-zzDf-WnEs`
@@ -21,7 +19,7 @@
 4. **El Artifact publicado** (el link que ve el usuario):
    - URL: `https://claude.ai/code/artifact/3e96904c-f359-4169-aef1-103e0ad90659`
 
-## Procedimiento para refrescar el dashboard (correr esto en cada firing de la Routine, cada 12hs)
+## Procedimiento para refrescar el dashboard (correr esto en cada firing de la Routine diaria)
 
 1. Descargar la Sheet como xlsx vía el connector de Google Drive:
    `mcp__Google_Drive__download_file_content` con

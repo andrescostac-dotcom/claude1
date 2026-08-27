@@ -1,5 +1,5 @@
 /**
- * CosCor — Sync Meta Ads + Kommo CRM into this Sheet, cada 12 horas.
+ * CosCor — Sync Meta Ads + Kommo CRM into this Sheet, daily.
  *
  * SETUP (hacer una sola vez):
  * 1. En este Sheet: Extensiones > Apps Script.
@@ -14,12 +14,12 @@
  *    apretar "Ejecutar". Va a pedir autorización (Google avisa que es un script
  *    no verificado — es normal para scripts propios, click en "Avanzado" >
  *    "Ir a [nombre del proyecto] (no seguro)" > Permitir).
- *    Esto corre la primera sincronización Y deja instalado el disparador de cada 12hs.
- * 5. Listo. Cada 12 horas se va a actualizar solo (ver SYNC_INTERVAL_HOURS abajo).
- *    Para forzar una actualización manual, ejecutar "syncAll".
+ *    Esto corre la primera sincronización Y deja instalado el disparador diario.
+ * 5. Listo. Todos los días a la hora elegida (ver DAILY_HOUR abajo) se va a
+ *    actualizar solo. Para forzar una actualización manual, ejecutar "syncAll".
  */
 
-const SYNC_INTERVAL_HOURS = 12; // cada cuántas horas corre la sincronización (antes era 1 vez por día)
+const DAILY_HOUR = 8; // hora (0-23, horario de Argentina) a la que corre la sincronización diaria
 
 const PIPELINE_ID = 13684663;
 const WON_ID = 142;
@@ -37,19 +37,18 @@ function props() { return PropertiesService.getScriptProperties(); }
 
 function setup() {
   syncAll();
-  installSyncTrigger();
+  installDailyTrigger();
 }
 
-function installSyncTrigger() {
+function installDailyTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === 'syncAll') ScriptApp.deleteTrigger(t);
   });
-  // everyHours no permite fijar un horario exacto (corre "aproximadamente" cada N horas desde
-  // que se instala el trigger) -- suficiente para este caso, a diferencia de atHour/everyDays
-  // que sí necesitan una hora fija.
   ScriptApp.newTrigger('syncAll')
     .timeBased()
-    .everyHours(SYNC_INTERVAL_HOURS)
+    .atHour(DAILY_HOUR)
+    .everyDays(1)
+    .inTimezone('America/Argentina/Buenos_Aires')
     .create();
 }
 
