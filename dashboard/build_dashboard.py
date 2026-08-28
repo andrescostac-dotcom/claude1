@@ -286,6 +286,25 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .filter-btn:hover { border-color: var(--accent-teal); }
 .filter-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
 .filter-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+.custom-range-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.custom-range-label { font-family: "Work Sans", sans-serif; font-size: 12.5px; font-weight: 600; color: var(--ink-muted); }
+.custom-range-input {
+  font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-height: 34px; color-scheme: light dark;
+}
+.custom-range-input:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+.custom-range-bar.active .custom-range-input { border-color: var(--accent-teal); }
+.custom-range-apply {
+  font-family: "Work Sans", sans-serif; font-size: 13px; font-weight: 600; color: var(--ink-muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 100px;
+  padding: 7px 14px; min-height: 34px; cursor: pointer; transition: background-color .15s, color .15s, border-color .15s;
+}
+.custom-range-apply:hover { border-color: var(--accent-teal); }
+.custom-range-apply:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+.custom-range-bar.active .custom-range-apply { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+@media (max-width: 480px) { .custom-range-input, .custom-range-apply { font-size: 12px; } }
+
 .range-caption { font-size: 12px; color: var(--ink-muted); margin: 0 0 24px; font-family: "IBM Plex Mono", monospace; }
 
 .kpi-groups { margin-bottom: 14px; }
@@ -507,6 +526,16 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
   font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600; padding: 6px 11px; border-radius: 7px;
   white-space: nowrap; transform: translate(-50%, -130%); box-shadow: var(--shadow); z-index: 2; }
 .chart-empty-note { font-size: 12px; color: var(--ink-muted); padding: 20px 0; text-align: center; }
+/* Gráficos combinados barras + línea (2 ejes) -- ver el comentario grande arriba de
+   renderComboChart() en el JS sobre por qué se usan 2 ejes acá. */
+.combo-legend { display: flex; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
+.combo-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-muted); }
+.combo-legend-swatch { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+.combo-legend-swatch.bar { background: var(--accent-teal); }
+.combo-legend-swatch.line { background: var(--accent-blue); border-radius: 50%; }
+.combo-bar { fill: var(--accent-teal); transition: opacity .1s; }
+.combo-bar.hovered { opacity: 0.72; }
+.chart-hit { cursor: pointer; }
 
 .reco-list { display: flex; flex-direction: column; gap: 10px; }
 .reco-item { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px;
@@ -558,6 +587,13 @@ __CSS__
   </div>
 
   <div class="filter-bar" id="filterBar" role="group" aria-label="Rango de fechas"></div>
+  <div class="custom-range-bar" id="customRangeBar" role="group" aria-label="Rango de fechas personalizado">
+    <label class="custom-range-label" for="dateFrom">Desde</label>
+    <input type="date" id="dateFrom" class="custom-range-input">
+    <label class="custom-range-label" for="dateTo">Hasta</label>
+    <input type="date" id="dateTo" class="custom-range-input">
+    <button class="custom-range-apply" id="applyCustomRange" type="button">Aplicar</button>
+  </div>
   <p class="range-caption" id="rangeCaption"></p>
 
   <div class="tab-panel" id="tab-resumen" role="tabpanel">
@@ -598,7 +634,7 @@ __CSS__
 
     <div class="panel wide-panel">
       <h2>Meta Ads — panel completo</h2>
-      <p class="panel-sub">Todas las campañas activas y pausadas · el "resultado" depende del objetivo de cada campaña</p>
+      <p class="panel-sub">Todas las campañas activas y pausadas · el "resultado" depende del objetivo de cada campaña · Impresiones, Clics y Gasto se toman directo de Meta y sí suman sin problema. *Alcance es la suma del alcance de cada día del período — Meta no lo da pre-sumado por período (solo por día), y una misma persona alcanzada varios días distintos se cuenta una vez por día, así que para rangos de más de 1 día este número queda por encima del alcance único real que muestra Meta Ads Manager para todo el período junto. Para "Ayer" (1 solo día) coincide exacto.</p>
       <div class="table-scroll"><table class="data-table" id="metaTable"></table></div>
     </div>
 
@@ -619,8 +655,8 @@ __CSS__
     </div>
 
     <div class="panel wide-panel">
-      <h2>Costo por resultado en el tiempo</h2>
-      <p class="panel-sub">Evolución dentro del rango elegido arriba · pasá el mouse por un punto para ver el valor exacto</p>
+      <h2>Volumen e inversión en el tiempo</h2>
+      <p class="panel-sub">Evolución dentro del rango elegido arriba · barras = cantidad, línea = el otro valor · pasá el mouse por una barra para ver los dos valores exactos</p>
       <div class="chart-grid" id="costCharts"></div>
     </div>
 
@@ -1353,6 +1389,133 @@ function renderLineChart(containerId, buckets, getValue, fmt) {
   });
 }
 
+// Versión compacta de un valor de eje (ej. "$125k", "3.4k") -- mira si el formatter completo
+// (fmtARS o fmtInt) devuelve algo con "$" para decidir si el resultado lleva signo pesos.
+function compactAxisFmt(v, fullFmt) {
+  const isMoney = fullFmt(0).startsWith('$');
+  const abs = Math.abs(v);
+  if (isMoney) {
+    if (abs >= 1000000) return '$' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (abs >= 1000) return '$' + Math.round(v / 1000) + 'k';
+    return fullFmt(v);
+  }
+  if (abs >= 1000) return Math.round(v / 1000) + 'k';
+  return fullFmt(v);
+}
+
+// Gráfico combinado barras + línea, con eje X categórico (1 categoría por bucket) y DOS ejes Y
+// (barras a la izquierda, línea a la derecha) -- pedido explícito del usuario con una imagen de
+// referencia. Es una excepción deliberada a la regla general de "nunca 2 ejes Y" (el calibrado
+// de 2 ejes puede insinuar una correlación que no está en los datos): para no caer en esa
+// trampa, el texto de los ejes se queda neutro (mismo ink-muted que el resto del dashboard, sin
+// colorear según la serie) y la identificación de cada serie se hace 100% por la leyenda de
+// arriba + el tooltip al pasar el mouse, que siempre muestra los 2 valores exactos juntos.
+function renderComboChart(containerId, buckets, barGetter, lineGetter, barLabel, lineLabel, barFmt, lineFmt) {
+  const el = document.getElementById(containerId);
+  const items = buckets.map(b => ({ label: bucketLabel(b), barVal: barGetter(b), lineVal: lineGetter(b) }));
+  const validBar = items.filter(p => p.barVal != null && !isNaN(p.barVal));
+  const validLine = items.filter(p => p.lineVal != null && !isNaN(p.lineVal));
+  if (items.length < 2 || (!validBar.length && !validLine.length)) {
+    el.innerHTML = '<p class="chart-empty-note">No hay suficientes datos en este período para graficar.</p>';
+    return;
+  }
+  const W = 480, H = 150, padL = 58, padR = 58, padT = 24, padB = 26;
+  const n = items.length;
+  const innerW = W - padL - padR;
+  const colW = innerW / n;
+  const barW = Math.max(2, colW * 0.55);
+  const xCenter = i => padL + colW * (i + 0.5);
+
+  const maxBar = (Math.max(0, ...validBar.map(p => p.barVal)) || 1) * 1.15;
+  const maxLine = (Math.max(0, ...validLine.map(p => p.lineVal)) || 1) * 1.15;
+  const yBar = v => H - padB - (v / maxBar) * (H - padT - padB);
+  const yLine = v => H - padB - (v / maxLine) * (H - padT - padB);
+
+  const gridLines = [0, 0.5, 1].map(f => {
+    const yy = (padT + (H - padT - padB) * (1 - f)).toFixed(1);
+    return `<line class="chart-gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>
+      <text class="chart-axis-label" x="${padL - 8}" y="${(+yy + 6).toFixed(1)}" text-anchor="end">${compactAxisFmt(maxBar * f, barFmt)}</text>
+      <text class="chart-axis-label" x="${W - padR + 8}" y="${(+yy + 6).toFixed(1)}" text-anchor="start">${compactAxisFmt(maxLine * f, lineFmt)}</text>`;
+  }).join('');
+
+  const barsHtml = items.map((p, i) => {
+    if (p.barVal == null || isNaN(p.barVal)) return '';
+    const x = xCenter(i) - barW / 2;
+    const y = yBar(p.barVal);
+    const h = Math.max(0, (H - padB) - y);
+    return `<rect class="combo-bar" data-i="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3"/>`;
+  }).join('');
+
+  let pathD = '';
+  items.forEach((p, i) => {
+    if (p.lineVal == null || isNaN(p.lineVal)) return;
+    const prevInvalid = i === 0 || items[i - 1].lineVal == null || isNaN(items[i - 1].lineVal);
+    pathD += `${prevInvalid ? 'M' : 'L'} ${xCenter(i).toFixed(1)} ${yLine(p.lineVal).toFixed(1)} `;
+  });
+
+  const xLabels = `
+    <text class="chart-axis-label" x="${xCenter(0).toFixed(1)}" y="${H - 4}" text-anchor="middle">${items[0].label}</text>
+    <text class="chart-axis-label" x="${xCenter(n - 1).toFixed(1)}" y="${H - 4}" text-anchor="middle">${items[n - 1].label}</text>`;
+
+  const hitRectsHtml = items.map((p, i) => {
+    const x = padL + colW * i;
+    return `<rect class="chart-hit" data-i="${i}" x="${x.toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${(H - padT - padB).toFixed(1)}" fill="transparent"/>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="combo-legend">
+      <span class="combo-legend-item"><span class="combo-legend-swatch bar"></span>${barLabel}</span>
+      <span class="combo-legend-item"><span class="combo-legend-swatch line"></span>${lineLabel}</span>
+    </div>
+    <div class="chart-wrap">
+      <svg class="chart-svg" viewBox="0 0 ${W} ${H}">
+        ${gridLines}
+        ${barsHtml}
+        <path class="chart-line" d="${pathD.trim()}"/>
+        ${xLabels}
+        <line class="chart-hover-line" id="${containerId}-hoverline" x1="0" x2="0" y1="${padT}" y2="${H - padB}" style="display:none"/>
+        <circle class="chart-hover-dot" id="${containerId}-hoverdot" r="4" style="display:none"/>
+        ${hitRectsHtml}
+      </svg>
+      <div class="chart-tooltip" id="${containerId}-tooltip" style="display:none"></div>
+    </div>`;
+
+  const wrapEl = el.querySelector('.chart-wrap');
+  const svgEl = el.querySelector('svg');
+  const hoverLine = el.querySelector(`#${containerId}-hoverline`);
+  const hoverDot = el.querySelector(`#${containerId}-hoverdot`);
+  const tooltip = el.querySelector(`#${containerId}-tooltip`);
+  el.querySelectorAll('.chart-hit').forEach(hit => {
+    const show = () => {
+      const i = +hit.dataset.i;
+      const p = items[i];
+      const cx = xCenter(i);
+      hoverLine.setAttribute('x1', cx); hoverLine.setAttribute('x2', cx); hoverLine.style.display = '';
+      el.querySelectorAll('.combo-bar').forEach(r => r.classList.toggle('hovered', +r.dataset.i === i));
+      if (p.lineVal != null && !isNaN(p.lineVal)) {
+        hoverDot.setAttribute('cx', cx); hoverDot.setAttribute('cy', yLine(p.lineVal).toFixed(1)); hoverDot.style.display = '';
+      } else {
+        hoverDot.style.display = 'none';
+      }
+      const wrapRect = wrapEl.getBoundingClientRect();
+      const svgRect = svgEl.getBoundingClientRect();
+      const scaleX = svgRect.width / W, scaleY = svgRect.height / H;
+      tooltip.style.left = ((svgRect.left - wrapRect.left) + cx * scaleX) + 'px';
+      tooltip.style.top = ((svgRect.top - wrapRect.top) + padT * scaleY) + 'px';
+      tooltip.style.display = '';
+      const barText = p.barVal != null && !isNaN(p.barVal) ? barFmt(p.barVal) : '—';
+      const lineText = p.lineVal != null && !isNaN(p.lineVal) ? lineFmt(p.lineVal) : '—';
+      tooltip.innerHTML = `<b>${p.label}</b><br>${barLabel}: ${barText}<br>${lineLabel}: ${lineText}`;
+    };
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('mousemove', show);
+    hit.addEventListener('mouseleave', () => {
+      hoverLine.style.display = 'none'; hoverDot.style.display = 'none'; tooltip.style.display = 'none';
+      el.querySelectorAll('.combo-bar').forEach(r => r.classList.remove('hovered'));
+    });
+  });
+}
+
 function renderInvestmentTable(buckets) {
   const el = document.getElementById('investmentTable');
   if (!buckets.length) {
@@ -1483,10 +1646,17 @@ const FUNNEL_ORDER = Object.keys(DATA.status_order)
   .filter(id => Number(id) !== DATA.won_id && Number(id) !== DATA.lost_id)
   .sort((a, b) => DATA.status_order[a] - DATA.status_order[b]);
 
-function render(rangeKey) {
-  const r = RANGES[rangeKey];
+// rangeKeyOrRange es normalmente la key de un preset (string, busca en RANGES), pero también
+// acepta un objeto range armado a mano ({ label, start, end, prevStart: null, prevEnd: null })
+// -- lo usa el filtro de fecha personalizado (Desde/Hasta) del header, que no tiene key en
+// RANGES. Sin comparación con período anterior para un rango personalizado (ambiguo qué período
+// "anterior" corresponde a un rango arbitrario), igual que "Todo el período".
+function render(rangeKeyOrRange) {
+  const isCustom = typeof rangeKeyOrRange !== 'string';
+  const r = isCustom ? rangeKeyOrRange : RANGES[rangeKeyOrRange];
   const noPrev = r.prevStart === null;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.range === rangeKey));
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', !isCustom && b.dataset.range === rangeKeyOrRange));
+  document.getElementById('customRangeBar').classList.toggle('active', isCustom);
 
   const curLeads = filterLeads(r.start, r.end);
   const prevLeads = noPrev ? [] : filterLeads(r.prevStart, r.prevEnd);
@@ -1497,7 +1667,7 @@ function render(rangeKey) {
   const badge = (curVal, prevVal, higherIsGood) => noPrev ? '' : deltaBadge(curVal, prevVal ?? 0, higherIsGood);
 
   document.getElementById('rangeCaption').textContent = noPrev
-    ? `${keyToLabel(r.start)} – ${keyToLabel(r.end)} · todo el historial disponible`
+    ? `${keyToLabel(r.start)} – ${keyToLabel(r.end)}${isCustom ? ' · rango personalizado' : ' · todo el historial disponible'}`
     : `${keyToLabel(r.start)} – ${keyToLabel(r.end)} · vs. ${keyToLabel(r.prevStart)} – ${keyToLabel(r.prevEnd)}`;
 
   // ---- KPIs ----
@@ -1754,7 +1924,7 @@ function render(rangeKey) {
   // ---- Meta full panel ----
   const metaRows = Object.entries(curMeta.byCampaign).sort((a, b) => b[1].spend - a[1].spend);
   document.getElementById('metaTable').innerHTML = `
-    <thead><tr><th>Campaña</th><th>Estado</th><th>Resultado</th><th>Gasto</th><th>CPA</th><th>Impresiones</th><th>Alcance</th><th>CTR</th><th>CPM</th></tr></thead>
+    <thead><tr><th>Campaña</th><th>Estado</th><th>Resultado</th><th>Gasto</th><th>CPA</th><th>Impresiones</th><th>Alcance*</th><th>CTR</th><th>CPM</th></tr></thead>
     <tbody>
       ${metaRows.map(([name, c]) => {
         const obj = DATA.campaign_objectives[name];
@@ -1799,14 +1969,14 @@ function render(rangeKey) {
   // ---- Tab "Costos y Resultados" ----
   const buckets = buildBuckets(r.start, r.end).map(computeBucketMetrics);
   document.getElementById('costCharts').innerHTML = `
-    <div class="chart-card"><h3>Costo por lead nuevo</h3><p class="chart-caption">Inversión total en Meta Ads / leads generados</p><div id="chartLead"></div></div>
-    <div class="chart-card"><h3>Costo por visita</h3><p class="chart-caption">⚠️ los últimos períodos quedan subestimados: un lead recién creado todavía no tuvo tiempo de llegar a "visita"</p><div id="chartVisit"></div></div>
-    <div class="chart-card"><h3>Costo por visita calificada</h3><p class="chart-caption">⚠️ mismo efecto de rezago que "costo por visita", más marcado por ser una etapa más avanzada</p><div id="chartQualVisit"></div></div>
-    <div class="chart-card"><h3>Costo por conversación iniciada</h3><p class="chart-caption">Inversión en la campaña de WhatsApp / conversaciones iniciadas</p><div id="chartConv"></div></div>`;
-  renderLineChart('chartLead', buckets, b => b.leads ? b.spend / b.leads : null, fmtARS);
-  renderLineChart('chartVisit', buckets, b => b.visit ? b.spend / b.visit : null, fmtARS);
-  renderLineChart('chartQualVisit', buckets, b => b.qualifiedVisit ? b.spend / b.qualifiedVisit : null, fmtARS);
-  renderLineChart('chartConv', buckets, b => b.conversations ? b.waSpend / b.conversations : null, fmtARS);
+    <div class="chart-card"><h3>Leads vs. Inversión</h3><p class="chart-caption">Leads generados (barras) e inversión total en Meta Ads (línea)</p><div id="chartLeadsInv"></div></div>
+    <div class="chart-card"><h3>Visitas vs. Leads</h3><p class="chart-caption">⚠️ los últimos períodos quedan subestimados: un lead recién creado todavía no tuvo tiempo de llegar a "visita". Visitas (barras) vs. leads generados (línea)</p><div id="chartVisitsLeads"></div></div>
+    <div class="chart-card"><h3>Visitas vs. Inversión</h3><p class="chart-caption">⚠️ mismo efecto de rezago. Visitas (barras) vs. inversión total en Meta Ads (línea)</p><div id="chartVisitsInv"></div></div>
+    <div class="chart-card"><h3>Conversaciones vs. Inversión</h3><p class="chart-caption">Conversaciones de WhatsApp (barras) vs. inversión en la campaña de conversión por WhatsApp únicamente (línea)</p><div id="chartConvInv"></div></div>`;
+  renderComboChart('chartLeadsInv', buckets, b => b.leads, b => b.spend, 'Leads', 'Inversión', fmtInt, fmtARS);
+  renderComboChart('chartVisitsLeads', buckets, b => b.visit, b => b.leads, 'Visitas', 'Leads', fmtInt, fmtInt);
+  renderComboChart('chartVisitsInv', buckets, b => b.visit, b => b.spend, 'Visitas', 'Inversión', fmtInt, fmtARS);
+  renderComboChart('chartConvInv', buckets, b => b.conversations, b => b.waSpend, 'Conversaciones', 'Inversión (WhatsApp)', fmtInt, fmtARS);
   renderInvestmentTable(buckets);
   renderRecommendations(computeRecommendations(r, curLeads, curMeta, curAgg, prevAgg, prevMeta));
 }
@@ -1818,6 +1988,29 @@ const FILTERS = [
 document.getElementById('filterBar').innerHTML = FILTERS.map(([key, label]) =>
   `<button class="filter-btn" data-range="${key}">${label}</button>`).join('');
 document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => render(b.dataset.range)));
+
+// Filtro de fecha personalizado (Desde/Hasta) del header -- los 2 date input nativos, con min/max
+// para no dejar elegir un rango sin datos ni un "Hasta" posterior al último día completo (mismo
+// límite que el resto de los filtros, ver lastCompleteDayKey más arriba).
+(() => {
+  const dateFromEl = document.getElementById('dateFrom');
+  const dateToEl = document.getElementById('dateTo');
+  const minStr = keyToStr(minDataKey());
+  const maxStr = keyToStr(lastCompleteDayKey);
+  dateFromEl.min = minStr; dateFromEl.max = maxStr;
+  dateToEl.min = minStr; dateToEl.max = maxStr;
+  document.getElementById('applyCustomRange').addEventListener('click', () => {
+    if (!dateFromEl.value || !dateToEl.value) return;
+    const [fy, fm, fd] = dateFromEl.value.split('-').map(Number);
+    const [ty, tm, td] = dateToEl.value.split('-').map(Number);
+    let start = dateKey(fy, fm - 1, fd);
+    let end = dateKey(ty, tm - 1, td);
+    if (start > end) { const tmp = start; start = end; end = tmp; }
+    if (end > lastCompleteDayKey) end = lastCompleteDayKey;
+    if (start > end) start = end;
+    render({ label: 'Personalizado', start, end, prevStart: null, prevEnd: null });
+  });
+})();
 
 document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
   document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-selected', b === btn ? 'true' : 'false'); });

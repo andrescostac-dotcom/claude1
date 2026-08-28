@@ -114,6 +114,38 @@ function debugCustomFields() {
   }
 }
 
+// --- DEBUG: confirmar qué action_type de Meta corresponde a "Conversaciones por mensajes
+// iniciados" (la métrica que se ve en Meta Ads Manager). Trae los últimos 7 días de la campaña
+// WHATSAPP con TODOS los action_type que devuelve Meta (no solo los que usa el dashboard) y
+// suma cada uno por separado. Correr una vez, mirar el log, y comparar la suma de
+// "onsite_conversion.messaging_conversation_started_7d" (la que ahora usa el dashboard) contra
+// lo que Meta Ads Manager muestra como "Conversaciones por mensajes iniciados" para la campaña
+// WHATSAPP en los últimos 7 días -- si no coincide, pegarme el log completo para ajustar la
+// clave correcta en syncMetaDaily().
+function debugMetaActions() {
+  const token = props().getProperty('META_ACCESS_TOKEN');
+  const adAccount = props().getProperty('META_AD_ACCOUNT_ID');
+  const until = new Date();
+  const since = new Date();
+  since.setDate(since.getDate() - 7);
+  const fmt = d => Utilities.formatDate(d, 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd');
+  const filtering = JSON.stringify([{ field: 'campaign.name', operator: 'CONTAIN', value: 'WHATSAPP' }]);
+  const url = `https://graph.facebook.com/v19.0/${adAccount}/insights` +
+    `?level=adset&time_range=${encodeURIComponent(JSON.stringify({ since: fmt(since), until: fmt(until) }))}` +
+    `&filtering=${encodeURIComponent(filtering)}` +
+    `&fields=campaign_name,adset_name,spend,actions&limit=100&access_token=${encodeURIComponent(token)}`;
+  const resp = JSON.parse(UrlFetchApp.fetch(url).getContentText());
+  const data = resp.data || [];
+  Logger.log(`--- últimos 7 días, campaña WHATSAPP, ${data.length} fila(s) (1 por conjunto de anuncios) ---`);
+  const totals = {};
+  for (const r of data) {
+    Logger.log(`${r.adset_name}: ${JSON.stringify(r.actions)}`);
+    (r.actions || []).forEach(a => { totals[a.action_type] = (totals[a.action_type] || 0) + parseFloat(a.value); });
+  }
+  Logger.log('--- TOTALES por action_type (últimos 7 días, toda la campaña WHATSAPP) ---');
+  Logger.log(JSON.stringify(totals, null, 2));
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
@@ -325,6 +357,12 @@ function syncMetaDaily() {
     for (const r of resp.data || []) {
       const actions = {};
       (r.actions || []).forEach(a => { actions[a.action_type] = parseFloat(a.value); });
+      // "Conversaciones" = Meta "Conversaciones por mensajes iniciados". El nombre estándar de
+      // Meta para esa métrica es messaging_conversation_started_7d -- se prioriza ese; si no
+      // viene (cuentas viejas a veces solo tienen el genérico), cae a total_messaging_connection
+      // como antes. Ver debugMetaActions() para confirmar contra lo que muestra Meta Ads Manager.
+      const conversations = actions['onsite_conversion.messaging_conversation_started_7d']
+        ?? actions['onsite_conversion.total_messaging_connection'] ?? 0;
       rows.push([
         r.date_start,
         r.campaign_name,
@@ -336,7 +374,7 @@ function syncMetaDaily() {
         parseInt(r.reach || 0, 10),
         parseInt(r.clicks || 0, 10),
         actions['link_click'] || 0,
-        actions['onsite_conversion.total_messaging_connection'] || 0,
+        conversations,
         actions['post_engagement'] || 0,
       ]);
     }
