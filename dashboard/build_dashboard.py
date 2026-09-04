@@ -1298,6 +1298,32 @@ function bucketLabel(b) {
   return `${meses[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// Un tick por mes en el eje X (pedido explícito del usuario -- antes solo se veían el primer y
+// el último mes). El año solo se marca (showYear) en el primer tick y cada vez que cambia --
+// repetirlo en los 6+ ticks no aporta nada y, puesto al lado del mes, se pisa con el tick
+// vecino (probado en vivo) -- por eso donde showYear es true el caller lo dibuja en una 2da
+// línea abajo del mes en vez de al lado.
+function monthAxisLabels(buckets) {
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  let prevYear = null;
+  return buckets.map(b => {
+    const d = new Date(b.start);
+    const y = d.getUTCFullYear();
+    const showYear = y !== prevYear;
+    prevYear = y;
+    return { month: meses[d.getUTCMonth()], year: y, showYear };
+  });
+}
+
+// Arma el <text> (con <tspan> de año en una 2da línea si corresponde) de un tick del eje X --
+// lo comparten renderLineChart y renderComboChart. monthY/yearY son las 2 baselines posibles
+// (según haya 1 o 2 líneas); ver el padB extra que reservan ambos callers para que la 2da línea
+// entre sin recortarse.
+function axisMonthTick(x, anchor, label, monthY, yearY) {
+  if (!label.showYear) return `<text class="chart-axis-label" x="${x}" y="${yearY}" text-anchor="${anchor}">${label.month}</text>`;
+  return `<text class="chart-axis-label" x="${x}" y="${monthY}" text-anchor="${anchor}">${label.month}<tspan x="${x}" dy="16">${label.year}</tspan></text>`;
+}
+
 function computeBucketMetrics(b) {
   const leads = filterLeads(b.start, b.end);
   const metaRows = filterMetaDaily(b.start, b.end);
@@ -1324,7 +1350,7 @@ function renderLineChart(containerId, buckets, getValue, fmt) {
     el.innerHTML = '<p class="chart-empty-note">No hay suficientes datos en este período para graficar una tendencia.</p>';
     return;
   }
-  const W = 480, H = 150, padL = 70, padR = 10, padT = 24, padB = 26;
+  const W = 480, H = 150, padL = 70, padR = 10, padT = 24, padB = 34; // padB: lugar para el tick de 2 líneas (mes + año)
   const xs = points.map(p => p.x);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const vals = valid.map(p => p.value);
@@ -1350,13 +1376,20 @@ function renderLineChart(containerId, buckets, getValue, fmt) {
   const gridLines = [0, 0.5, 1].map(f => {
     const y = minY + (maxY - minY) * f;
     const yy = yScale(y).toFixed(1);
-    return `<line class="chart-gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>
-      <text class="chart-axis-label" x="${padL - 10}" y="${(+yy + 6).toFixed(1)}" text-anchor="end">${fmtAxis(y)}</text>`;
+    // El label de la línea "0" se salta -- queda pegado en la esquina inferior izquierda,
+    // justo donde ahora también vive el 1er tick del eje X (mes+año en 2 líneas) desde que se
+    // agregó un tick por mes, y se pisaban (probado en vivo). El "0" ya se entiende solo: es
+    // la base del gráfico.
+    const label = f === 0 ? '' :
+      `<text class="chart-axis-label" x="${padL - 10}" y="${(+yy + 6).toFixed(1)}" text-anchor="end">${fmtAxis(y)}</text>`;
+    return `<line class="chart-gridline" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>${label}`;
   }).join('');
 
-  const xLabels = `
-    <text class="chart-axis-label" x="${padL}" y="${H - 4}" text-anchor="start">${points[0].label}</text>
-    <text class="chart-axis-label" x="${W - padR}" y="${H - 4}" text-anchor="end">${points[points.length - 1].label}</text>`;
+  // "middle" para todos los ticks -- con un tick por mes, ya no hay solo 2 pegados a los bordes
+  // (que sí necesitaban "start"/"end" para no salirse) -- centrado se ve prolijo y no se pisa
+  // con el vecino (probado en vivo: "start" en el primero invadía el segundo).
+  const axisLabels = monthAxisLabels(buckets);
+  const xLabels = points.map((p, i) => axisMonthTick(xScale(p.x).toFixed(1), 'middle', axisLabels[i], H - 16, H - 4)).join('');
 
   const dotsHtml = points.map((p, i) => p.value == null ? '' :
     `<circle class="chart-pt" data-i="${i}" cx="${xScale(p.x).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="10" fill="transparent"/>`
@@ -1431,7 +1464,7 @@ function renderComboChart(containerId, buckets, barGetter, lineGetter, barLabel,
     el.innerHTML = '<p class="chart-empty-note">No hay suficientes datos en este período para graficar.</p>';
     return;
   }
-  const W = 480, H = 150, padL = 58, padR = 58, padT = 24, padB = 26;
+  const W = 480, H = 150, padL = 58, padR = 58, padT = 24, padB = 34; // padB: lugar para el tick de 2 líneas (mes + año)
   const n = items.length;
   const innerW = W - padL - padR;
   const colW = innerW / n;
@@ -1465,9 +1498,9 @@ function renderComboChart(containerId, buckets, barGetter, lineGetter, barLabel,
     pathD += `${prevInvalid ? 'M' : 'L'} ${xCenter(i).toFixed(1)} ${yLine(p.lineVal).toFixed(1)} `;
   });
 
-  const xLabels = `
-    <text class="chart-axis-label" x="${xCenter(0).toFixed(1)}" y="${H - 4}" text-anchor="middle">${items[0].label}</text>
-    <text class="chart-axis-label" x="${xCenter(n - 1).toFixed(1)}" y="${H - 4}" text-anchor="middle">${items[n - 1].label}</text>`;
+  // "middle" para todos los ticks -- ver el comentario igual en renderLineChart.
+  const axisLabels = monthAxisLabels(buckets);
+  const xLabels = items.map((p, i) => axisMonthTick(xCenter(i).toFixed(1), 'middle', axisLabels[i], H - 16, H - 4)).join('');
 
   const hitRectsHtml = items.map((p, i) => {
     const x = padL + colW * i;
