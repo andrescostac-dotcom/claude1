@@ -661,6 +661,12 @@ __CSS__
     </div>
 
     <div class="panel wide-panel">
+      <h2>Costo por resultado en el tiempo</h2>
+      <p class="panel-sub">Mismos meses que los gráficos de arriba (todo el historial, no cambia con el filtro de fecha) · para ver de un vistazo si el costo sube o baja mes a mes</p>
+      <div class="chart-grid" id="costTrendCharts"></div>
+    </div>
+
+    <div class="panel wide-panel">
       <h2>Inversión por resultado</h2>
       <p class="panel-sub">Mismos meses que los gráficos de arriba (todo el historial, no cambia con el filtro de fecha), con la inversión y las cantidades detrás de cada costo. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
@@ -1986,6 +1992,19 @@ function render(rangeKeyOrRange) {
   renderComboChart('chartVisitsLeads', buckets, b => b.visit, b => b.leads, 'Visitas', 'Leads', fmtInt, fmtInt);
   renderComboChart('chartVisitsInv', buckets, b => b.visit, b => b.spend, 'Visitas', 'Inversión', fmtInt, fmtARS);
   renderComboChart('chartConvInv', buckets, b => b.conversations, b => b.waSpend, 'Conversaciones', 'Inversión (WhatsApp)', fmtInt, fmtARS);
+
+  // Costo por resultado, mes a mes -- a diferencia de los gráficos de arriba (cantidad vs.
+  // inversión), acá lo que importa es UN solo número por mes (el costo ya es una razón, no
+  // tiene sentido combinarlo con nada más en 2 ejes) así que van como línea simple: más fácil
+  // leer de un vistazo si sube o baja mes a mes.
+  document.getElementById('costTrendCharts').innerHTML = `
+    <div class="chart-card"><h3>Costo por visita</h3><p class="chart-caption">Inversión total en Meta Ads / leads con visita, por mes</p><div id="chartCostVisit"></div></div>
+    <div class="chart-card"><h3>Costo por visita calificada</h3><p class="chart-caption">⚠️ pocas visitas calificadas por mes hacen que este número salte mucho — un mes sin ninguna queda directamente sin dato (corte en la línea). Inversión total en Meta Ads / leads con visita calificada, por mes</p><div id="chartCostQualVisit"></div></div>
+    <div class="chart-card"><h3>Costo por conversación</h3><p class="chart-caption">Inversión en la campaña de conversión por WhatsApp / conversaciones, por mes</p><div id="chartCostConv"></div></div>`;
+  renderLineChart('chartCostVisit', buckets, b => b.visit ? b.spend / b.visit : null, fmtARS);
+  renderLineChart('chartCostQualVisit', buckets, b => b.qualifiedVisit ? b.spend / b.qualifiedVisit : null, fmtARS);
+  renderLineChart('chartCostConv', buckets, b => b.conversations ? b.waSpend / b.conversations : null, fmtARS);
+
   renderInvestmentTable(buckets);
   renderRecommendations(computeRecommendations(r, curLeads, curMeta, curAgg, prevAgg, prevMeta));
 }
