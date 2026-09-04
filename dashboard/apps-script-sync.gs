@@ -35,6 +35,38 @@ const META_MONTHS_BACK = 36;
 
 function props() { return PropertiesService.getScriptProperties(); }
 
+// Reintenta un UrlFetchApp.fetch() ante fallos transitorios -- ej. "Address unavailable"
+// (un hiccup momentáneo de conexión de Google hacia el servidor de destino, no un error de
+// nuestro código ni de los datos) o un 429/5xx de la API. Sin esto, cualquier request de las
+// ~decenas que hace un sync se cortaba y tiraba abajo syncAll() entero para ese día (visto en
+// vivo el 3/9: "Exception: Address unavailable" en pleno fetchContactsById). El sheet no se
+// pierde en ese caso -- sheet.clear() corre recién al final, después de todos los fetches -- pero
+// el sync de ese día directamente no llegaba a correr. Reintenta con backoff (1s, 2s, 4s) antes
+// de rendirse y dejar que la excepción se propague (así una falla real y persistente sigue
+// avisando por mail, como siempre hace Apps Script con un trigger que tira excepción).
+function fetchWithRetry(url, options) {
+  const MAX_ATTEMPTS = 4;
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const resp = options ? UrlFetchApp.fetch(url, options) : UrlFetchApp.fetch(url);
+      const code = resp.getResponseCode();
+      // Un 429/5xx solo llega hasta acá si el caller pidió muteHttpExceptions:true (si no,
+      // UrlFetchApp ya tiró la excepción que atajamos abajo) -- son errores transitorios de la
+      // API, vale la pena reintentar en vez de devolver la respuesta de error tal cual.
+      if (code === 429 || code >= 500) {
+        lastError = new Error(`HTTP ${code} de ${url.split('?')[0]}`);
+      } else {
+        return resp;
+      }
+    } catch (e) {
+      lastError = e;
+    }
+    if (attempt < MAX_ATTEMPTS) Utilities.sleep(1000 * Math.pow(2, attempt - 1)); // 1s, 2s, 4s
+  }
+  throw lastError;
+}
+
 function setup() {
   syncAll();
   installDailyTrigger();
@@ -72,7 +104,7 @@ function debugLead() {
   const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
   const headers = { Authorization: 'Bearer ' + token };
-  const resp = UrlFetchApp.fetch(
+  const resp = fetchWithRetry(
     `https://${subdomain}/api/v4/leads/${LEAD_ID}?with=source_id,catalog_elements`,
     { headers, muteHttpExceptions: true });
   Logger.log('HTTP ' + resp.getResponseCode());
@@ -93,7 +125,7 @@ function debugCustomFields() {
   const token = props().getProperty('KOMMO_ACCESS_TOKEN');
   const headers = { Authorization: 'Bearer ' + token };
 
-  const resp = UrlFetchApp.fetch(
+  const resp = fetchWithRetry(
     `https://${subdomain}/api/v4/leads/${LEAD_ID}?with=contacts`,
     { headers, muteHttpExceptions: true });
   Logger.log('HTTP lead: ' + resp.getResponseCode());
@@ -104,7 +136,7 @@ function debugCustomFields() {
   const contacts = (lead._embedded && lead._embedded.contacts) || [];
   Logger.log(`--- ${contacts.length} contacto(s) vinculado(s) ---`);
   for (const c of contacts) {
-    const cResp = UrlFetchApp.fetch(
+    const cResp = fetchWithRetry(
       `https://${subdomain}/api/v4/contacts/${c.id}`,
       { headers, muteHttpExceptions: true });
     Logger.log(`HTTP contacto ${c.id}: ` + cResp.getResponseCode());
@@ -134,7 +166,7 @@ function debugMetaActions() {
     `?level=adset&time_range=${encodeURIComponent(JSON.stringify({ since: fmt(since), until: fmt(until) }))}` +
     `&filtering=${encodeURIComponent(filtering)}` +
     `&fields=campaign_name,adset_name,spend,actions&limit=100&access_token=${encodeURIComponent(token)}`;
-  const resp = JSON.parse(UrlFetchApp.fetch(url).getContentText());
+  const resp = JSON.parse(fetchWithRetry(url).getContentText());
   const data = resp.data || [];
   Logger.log(`--- últimos 7 días, campaña WHATSAPP, ${data.length} fila(s) (1 por conjunto de anuncios) ---`);
   const totals = {};
@@ -232,7 +264,7 @@ function fetchContactsById(ids) {
     const filterParams = batch.map(id => `filter[id][]=${id}`).join('&');
     let page = 1;
     while (true) {
-      const resp = UrlFetchApp.fetch(
+      const resp = fetchWithRetry(
         `https://${subdomain}/api/v4/contacts?${filterParams}&limit=250&page=${page}`,
         { headers, muteHttpExceptions: true });
       if (resp.getResponseCode() === 204) break;
@@ -253,7 +285,7 @@ function syncKommoLeads() {
   const headers = { Authorization: 'Bearer ' + token };
 
   // pipeline statuses (for names + sort order)
-  const pipeline = JSON.parse(UrlFetchApp.fetch(
+  const pipeline = JSON.parse(fetchWithRetry(
     `https://${subdomain}/api/v4/leads/pipelines/${PIPELINE_ID}`, { headers }).getContentText());
   const statuses = {};
   pipeline._embedded.statuses.forEach(s => { statuses[s.id] = s.name; });
@@ -264,7 +296,7 @@ function syncKommoLeads() {
   const contactIds = new Set();
   let page = 1;
   while (true) {
-    const resp = UrlFetchApp.fetch(
+    const resp = fetchWithRetry(
       `https://${subdomain}/api/v4/leads?with=contacts&limit=250&page=${page}`,
       { headers, muteHttpExceptions: true });
     if (resp.getResponseCode() === 204) break;
@@ -336,7 +368,7 @@ function syncMetaDaily() {
   const token = props().getProperty('META_ACCESS_TOKEN');
   const adAccount = props().getProperty('META_AD_ACCOUNT_ID');
 
-  const campResp = UrlFetchApp.fetch(
+  const campResp = fetchWithRetry(
     `https://graph.facebook.com/v19.0/${adAccount}/campaigns?fields=name,objective,status&limit=100&access_token=${encodeURIComponent(token)}`);
   const campaigns = JSON.parse(campResp.getContentText()).data || [];
   const objectives = {}; const statuses = {};
@@ -353,7 +385,7 @@ function syncMetaDaily() {
 
   const rows = [];
   while (url) {
-    const resp = JSON.parse(UrlFetchApp.fetch(url).getContentText());
+    const resp = JSON.parse(fetchWithRetry(url).getContentText());
     for (const r of resp.data || []) {
       const actions = {};
       (r.actions || []).forEach(a => { actions[a.action_type] = parseFloat(a.value); });
