@@ -656,13 +656,13 @@ __CSS__
 
     <div class="panel wide-panel">
       <h2>Volumen e inversión en el tiempo</h2>
-      <p class="panel-sub">Evolución dentro del rango elegido arriba · barras = cantidad, línea = el otro valor · pasá el mouse por una barra para ver los dos valores exactos</p>
+      <p class="panel-sub">Todo el historial disponible, por mes · no cambia con el filtro de fecha de arriba · barras = cantidad, línea = el otro valor · pasá el mouse por una barra para ver los dos valores exactos</p>
       <div class="chart-grid" id="costCharts"></div>
     </div>
 
     <div class="panel wide-panel">
       <h2>Inversión por resultado</h2>
-      <p class="panel-sub">Mismos períodos que los gráficos de arriba, con la inversión y las cantidades detrás de cada costo. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
+      <p class="panel-sub">Mismos meses que los gráficos de arriba (todo el historial, no cambia con el filtro de fecha), con la inversión y las cantidades detrás de cada costo. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
     </div>
 
@@ -1267,23 +1267,29 @@ function renderCalendarWeek(wrap, toolbarHtml, legendHtml, byDay, colorFor) {
 
 // ============ Tab "Costos y Resultados" ============
 
+// Siempre por mes calendario (pedido explícito del usuario) -- antes alternaba diario/semanal
+// según el largo del rango elegido, pero eso hacía que el eje X de "Volumen e inversión en el
+// tiempo" cambiara de granularidad según qué filtro estuviera activo. Un bucket puede quedar
+// parcial en las puntas (si el rango no arranca/termina justo en el 1º o el último día del mes)
+// -- eso es esperado, se sigue viendo bien porque el label solo muestra el mes.
 function buildBuckets(startKey, endKey) {
-  // Diario si el rango elegido es corto (<=21 días), semanal si es más largo — así el
-  // gráfico no queda ni vacío (1 punto) ni saturado (100+ puntos) según el filtro activo.
-  const totalDays = Math.round((endKey - startKey) / 86400000) + 1;
-  const bucketDays = totalDays > 21 ? 7 : 1;
   const buckets = [];
+  const startDate = new Date(startKey);
+  let y = startDate.getUTCFullYear(), m = startDate.getUTCMonth();
   let cur = startKey;
   while (cur <= endKey) {
-    const bEnd = Math.min(addDaysKey(cur, bucketDays - 1), endKey);
+    const bEnd = Math.min(dateKey(y, m, daysInMonth(y, m)), endKey);
     buckets.push({ start: cur, end: bEnd });
-    cur = addDaysKey(bEnd, 1);
+    m++; if (m > 11) { m = 0; y++; }
+    cur = dateKey(y, m, 1);
   }
   return buckets;
 }
 
 function bucketLabel(b) {
-  return b.start === b.end ? keyToLabel(b.start) : `${keyToLabel(b.start)}–${keyToLabel(b.end)}`;
+  const d = new Date(b.start);
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${meses[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 function computeBucketMetrics(b) {
@@ -1967,7 +1973,10 @@ function render(rangeKeyOrRange) {
     </div>`).join('') : '<p class="empty-note">Sin leads en este período.</p>';
 
   // ---- Tab "Costos y Resultados" ----
-  const buckets = buildBuckets(r.start, r.end).map(computeBucketMetrics);
+  // A diferencia del resto de la página, estos gráficos y la tabla de abajo NO usan el rango
+  // r del filtro de fecha del header -- pedido explícito del usuario: quiere ver siempre TODOS
+  // los meses de historial disponible en el eje X, sin importar qué filtro esté activo arriba.
+  const buckets = buildBuckets(minDataKey(), lastCompleteDayKey).map(computeBucketMetrics);
   document.getElementById('costCharts').innerHTML = `
     <div class="chart-card"><h3>Leads vs. Inversión</h3><p class="chart-caption">Leads generados (barras) e inversión total en Meta Ads (línea)</p><div id="chartLeadsInv"></div></div>
     <div class="chart-card"><h3>Visitas vs. Leads</h3><p class="chart-caption">⚠️ los últimos períodos quedan subestimados: un lead recién creado todavía no tuvo tiempo de llegar a "visita". Visitas (barras) vs. leads generados (línea)</p><div id="chartVisitsLeads"></div></div>
