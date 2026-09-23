@@ -178,6 +178,49 @@ function debugMetaActions() {
   Logger.log(JSON.stringify(totals, null, 2));
 }
 
+// --- DEBUG: el 23/9 el usuario vio un -80% de leads en "últimos 7 días" y "ayer" en 0 -- Meta
+// (gasto e inicios de conversación de WhatsApp) siguió normal esos mismos días, así que la caída
+// es rara. syncKommoLeads() re-trae TODOS los leads de Kommo cada vez (sin filtrar por fecha), así
+// que si Kommo mismo devuelve pocos leads recientes en esa pasada completa, el Sheet lo refleja
+// tal cual -- no hay forma de que el sync "pierda" leads recientes sin perder también los viejos.
+// Esta función pide DIRECTO a Kommo (filter[created_at][from/to], sin pasar por el resto del
+// sync) los leads de los últimos 7 días y los cuenta por día. Correr desde el editor y comparar:
+// 1) el total y el conteo por día de acá contra Kommo mismo (Leads > filtrar por fecha de
+//    creación, en la web) -- si no coincide, avisame el número real de Kommo.
+// 2) contra la pestaña "Leads" de este Sheet, filtrando por fecha -- si SÍ coincide con Kommo
+//    pero no con lo que esperabas ver, el problema está del lado de Kommo (o de cómo se están
+//    generando los leads ahí), no en este sync ni en el dashboard.
+function debugRecentLeads() {
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+  const now = Math.floor(Date.now() / 1000);
+  const sevenDaysAgo = now - 7 * 86400;
+  const byDay = {};
+  const ids = [];
+  let page = 1;
+  while (true) {
+    const resp = fetchWithRetry(
+      `https://${subdomain}/api/v4/leads?filter[created_at][from]=${sevenDaysAgo}&filter[created_at][to]=${now}&limit=250&page=${page}`,
+      { headers, muteHttpExceptions: true });
+    if (resp.getResponseCode() === 204) break;
+    const data = JSON.parse(resp.getContentText());
+    const leads = (data._embedded && data._embedded.leads) || [];
+    if (!leads.length) break;
+    for (const l of leads) {
+      const day = Utilities.formatDate(new Date(l.created_at * 1000), 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd');
+      byDay[day] = (byDay[day] || 0) + 1;
+      ids.push(l.id);
+    }
+    if (!data._links || !data._links.next) break;
+    page++;
+  }
+  Logger.log(`--- ${ids.length} lead(s) en Kommo con created_at en los últimos 7 días (filtro directo de la API, sin pasar por syncKommoLeads) ---`);
+  Logger.log(JSON.stringify(byDay, null, 2));
+  Logger.log('--- IDs (para buscarlos en Kommo o en la pestaña Leads de este Sheet) ---');
+  Logger.log(JSON.stringify(ids));
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)

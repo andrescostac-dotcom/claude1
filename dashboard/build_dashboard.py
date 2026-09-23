@@ -668,7 +668,7 @@ __CSS__
 
     <div class="panel wide-panel">
       <h2>Inversión por resultado</h2>
-      <p class="panel-sub">Mismos meses que los gráficos de arriba (todo el historial, no cambia con el filtro de fecha), con la inversión y las cantidades detrás de cada costo. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
+      <p class="panel-sub">Mismos meses que los gráficos de arriba (todo el historial, no cambia con el filtro de fecha), con la inversión y las cantidades detrás de cada costo · cada valor incluye la comparativa vs. el mes anterior. *Costo/conversación usa solo la inversión de la campaña de conversión por WhatsApp, no el total de Meta Ads.</p>
       <div class="table-scroll"><table class="data-table" id="investmentTable"></table></div>
     </div>
 
@@ -1576,22 +1576,31 @@ function renderInvestmentTable(buckets) {
       <th>Conversaciones</th><th>Costo / conversación*</th>
     </tr></thead>
     <tbody>
-      ${buckets.map(b => {
+      ${buckets.map((b, i) => {
         const costLead = b.leads ? b.spend / b.leads : null;
         const costVisit = b.visit ? b.spend / b.visit : null;
         const costQualVisit = b.qualifiedVisit ? b.spend / b.qualifiedVisit : null;
         const costConv = b.conversations ? b.waSpend / b.conversations : null;
+        // Comparativa vs. el mes anterior (fila de arriba, ya que buckets viene ordenado
+        // cronológicamente) -- mismo componente kpi-delta que usan las tarjetas de arriba. La
+        // 1ra fila no tiene mes anterior con el que compararse, así que va sin badge.
+        const prev = i > 0 ? buckets[i - 1] : null;
+        const prevCostLead = prev && prev.leads ? prev.spend / prev.leads : null;
+        const prevCostVisit = prev && prev.visit ? prev.spend / prev.visit : null;
+        const prevCostQualVisit = prev && prev.qualifiedVisit ? prev.spend / prev.qualifiedVisit : null;
+        const prevCostConv = prev && prev.conversations ? prev.waSpend / prev.conversations : null;
+        const mom = (curVal, prevVal, higherIsGood) => prev ? deltaBadge(curVal, prevVal ?? 0, higherIsGood) : '';
         return `<tr>
         <td class="label-cell" data-sort="${b.start}">${bucketLabel(b)}</td>
-        <td data-sort="${b.spend}">${fmtARS(b.spend)}</td>
-        <td data-sort="${b.leads}">${fmtInt(b.leads)}</td>
-        <td data-sort="${costLead ?? ''}">${costLead != null ? fmtARS(costLead) : '—'}</td>
-        <td data-sort="${b.visit}">${fmtInt(b.visit)}</td>
-        <td data-sort="${costVisit ?? ''}">${costVisit != null ? fmtARS(costVisit) : '—'}</td>
-        <td data-sort="${b.qualifiedVisit}">${fmtInt(b.qualifiedVisit)}</td>
-        <td data-sort="${costQualVisit ?? ''}">${costQualVisit != null ? fmtARS(costQualVisit) : '—'}</td>
-        <td data-sort="${b.conversations}">${fmtInt(b.conversations)}</td>
-        <td data-sort="${costConv ?? ''}">${costConv != null ? fmtARS(costConv) : '—'}</td>
+        <td data-sort="${b.spend}">${fmtARS(b.spend)} ${mom(b.spend, prev?.spend, null)}</td>
+        <td data-sort="${b.leads}">${fmtInt(b.leads)} ${mom(b.leads, prev?.leads, true)}</td>
+        <td data-sort="${costLead ?? ''}">${costLead != null ? fmtARS(costLead) : '—'} ${costLead != null ? mom(costLead, prevCostLead, false) : ''}</td>
+        <td data-sort="${b.visit}">${fmtInt(b.visit)} ${mom(b.visit, prev?.visit, true)}</td>
+        <td data-sort="${costVisit ?? ''}">${costVisit != null ? fmtARS(costVisit) : '—'} ${costVisit != null ? mom(costVisit, prevCostVisit, false) : ''}</td>
+        <td data-sort="${b.qualifiedVisit}">${fmtInt(b.qualifiedVisit)} ${mom(b.qualifiedVisit, prev?.qualifiedVisit, true)}</td>
+        <td data-sort="${costQualVisit ?? ''}">${costQualVisit != null ? fmtARS(costQualVisit) : '—'} ${costQualVisit != null ? mom(costQualVisit, prevCostQualVisit, false) : ''}</td>
+        <td data-sort="${b.conversations}">${fmtInt(b.conversations)} ${mom(b.conversations, prev?.conversations, true)}</td>
+        <td data-sort="${costConv ?? ''}">${costConv != null ? fmtARS(costConv) : '—'} ${costConv != null ? mom(costConv, prevCostConv, false) : ''}</td>
       </tr>`;
       }).join('')}
     </tbody>`;
