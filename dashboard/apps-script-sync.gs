@@ -335,12 +335,20 @@ function syncKommoLeads() {
 
   // Fase 1: traer todos los leads (con su contacto principal embebido vía with=contacts) y
   // armar filas parciales -- todavía sin casa_visitada/fecha_visita, que dependen del contacto.
+  // order[id]=asc es importante: sin un orden explícito, Kommo puede devolver los leads
+  // ordenados por última modificación -- en una cuenta donde el equipo de ventas está
+  // constantemente tocando leads viejos (cambiando de etapa, comentando), eso reordena la lista
+  // MIENTRAS se está paginando (acá son ~11 páginas de 250), y un lead recién creado -- que
+  // todavía nadie tocó -- puede terminar salteado entre 2 páginas. El id de un lead no cambia
+  // nunca, así que ordenar por id da una paginación estable pase lo que pase del lado de ventas
+  // mientras corre el sync. Detectado el 23/9: el usuario confirmó en Kommo mismo bastantes más
+  // leads recientes de los que este sync traía.
   const partial = [];
   const contactIds = new Set();
   let page = 1;
   while (true) {
     const resp = fetchWithRetry(
-      `https://${subdomain}/api/v4/leads?with=contacts&limit=250&page=${page}`,
+      `https://${subdomain}/api/v4/leads?with=contacts&limit=250&page=${page}&order[id]=asc`,
       { headers, muteHttpExceptions: true });
     if (resp.getResponseCode() === 204) break;
     const data = JSON.parse(resp.getContentText());
