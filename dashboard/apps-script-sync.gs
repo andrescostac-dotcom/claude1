@@ -262,6 +262,39 @@ function debugUnsortedLeads() {
   Logger.log(`--- TOTAL unsorted encontrados: ${total} ---`);
 }
 
+// --- DEBUG: el usuario ahora quiere contar SOLO los leads cuya "Fuente de lead" (el filtro que
+// usa en Kommo, visto en captura como "Fuente de lead: Andres Coscor") sea esa -- NO es nuestro
+// campo personalizado FUENTE (578180, valores IG/ZP/WA/NDB/Web/MELI, cargado a mano por ventas).
+// "Fuente de lead" en la UI de Kommo es otro concepto: cada lead puede tener un source_id que
+// apunta a una entidad de /api/v4/sources (una "fuente" configurada en Kommo, típicamente ligada a
+// una integración de mensajería). Esta función:
+// 1) trae /api/v4/sources completo (id + nombre de cada fuente configurada en la cuenta) -- ahí
+//    tiene que aparecer "Andres Coscor" con su id.
+// 2) trae los últimos 20 leads normales (?with=source_id) y de unsorted->aceptados, para ver qué
+//    source_id tiene cada uno y confirmar que el campo se llama así y sobrevive a la conversión de
+//    unsorted a lead formal.
+// Correr desde el editor y pegarme el resultado completo (Ver > Registros).
+function debugLeadSources() {
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+
+  const sourcesResp = fetchWithRetry(
+    `https://${subdomain}/api/v4/sources`, { headers, muteHttpExceptions: true });
+  Logger.log('HTTP /sources: ' + sourcesResp.getResponseCode());
+  Logger.log(sourcesResp.getContentText());
+
+  const leadsResp = fetchWithRetry(
+    `https://${subdomain}/api/v4/leads?with=source_id&limit=20&order[id]=desc`,
+    { headers, muteHttpExceptions: true });
+  Logger.log('HTTP /leads (últimos 20, with=source_id): ' + leadsResp.getResponseCode());
+  const data = JSON.parse(leadsResp.getContentText());
+  const leads = (data._embedded && data._embedded.leads) || [];
+  for (const l of leads) {
+    Logger.log(`lead id=${l.id} status_id=${l.status_id} source_id=${l.source_id} created_at=${Utilities.formatDate(new Date(l.created_at * 1000), 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd HH:mm')}`);
+  }
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
