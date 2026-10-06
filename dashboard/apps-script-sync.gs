@@ -262,77 +262,6 @@ function debugUnsortedLeads() {
   Logger.log(`--- TOTAL unsorted encontrados: ${total} ---`);
 }
 
-// --- DEBUG: el usuario ahora quiere contar SOLO los leads cuya "Fuente de lead" (el filtro que
-// usa en Kommo, visto en captura como "Fuente de lead: Andres Coscor") sea esa -- NO es nuestro
-// campo personalizado FUENTE (578180, valores IG/ZP/WA/NDB/Web/MELI, cargado a mano por ventas).
-// "Fuente de lead" en la UI de Kommo es otro concepto: cada lead puede tener un source_id que
-// apunta a una entidad de /api/v4/sources (una "fuente" configurada en Kommo, típicamente ligada a
-// una integración de mensajería). Esta función:
-// 1) trae /api/v4/sources completo (id + nombre de cada fuente configurada en la cuenta) -- ahí
-//    tiene que aparecer "Andres Coscor" con su id.
-// 2) trae los últimos 20 leads normales (?with=source_id) y de unsorted->aceptados, para ver qué
-//    source_id tiene cada uno y confirmar que el campo se llama así y sobrevive a la conversión de
-//    unsorted a lead formal.
-// Correr desde el editor y pegarme el resultado completo (Ver > Registros).
-function debugLeadSources() {
-  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
-  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
-  const headers = { Authorization: 'Bearer ' + token };
-
-  const sourcesResp = fetchWithRetry(
-    `https://${subdomain}/api/v4/sources`, { headers, muteHttpExceptions: true });
-  Logger.log('HTTP /sources: ' + sourcesResp.getResponseCode());
-  Logger.log(sourcesResp.getContentText());
-
-  const leadsResp = fetchWithRetry(
-    `https://${subdomain}/api/v4/leads?with=source_id&limit=20&order[id]=desc`,
-    { headers, muteHttpExceptions: true });
-  Logger.log('HTTP /leads (últimos 20, with=source_id): ' + leadsResp.getResponseCode());
-  const data = JSON.parse(leadsResp.getContentText());
-  const leads = (data._embedded && data._embedded.leads) || [];
-  for (const l of leads) {
-    Logger.log(`lead id=${l.id} status_id=${l.status_id} source_id=${l.source_id} created_at=${Utilities.formatDate(new Date(l.created_at * 1000), 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd HH:mm')}`);
-  }
-}
-
-// --- DEBUG: /api/v4/sources vino vacío (204) -- no sirve para resolver source_id a un nombre en
-// esta cuenta. Alternativa: ya sabemos el canal real (WhatsApp/Instagram/Facebook) de los 30 leads
-// que vimos en debugUnsortedLeads() por su source_name (waba=WhatsApp, instagram_business_comments=
-// Instagram, facebook_comments=Facebook). Si les pedimos el source_id a esos mismos leads (ya
-// aceptados / convertidos), podemos armar la tabla canal -> source_id sin depender de /sources.
-// Correr desde el editor y pegarme el resultado completo.
-function debugSourceIdForKnownChannels() {
-  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
-  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
-  const headers = { Authorization: 'Bearer ' + token };
-  // id -> canal, tomado tal cual del log de debugUnsortedLeads() del 6/10.
-  const KNOWN_CHANNEL = {
-    27667553: 'instagram', 27644969: 'waba', 27629041: 'waba', 27628469: 'instagram',
-    27626661: 'waba', 27614695: 'waba', 27580067: 'instagram', 27578643: 'waba',
-    27572349: 'waba', 27565497: 'waba', 27561695: 'waba', 27560639: 'waba',
-    27559383: 'waba', 27558895: 'waba', 27554697: 'instagram', 27551971: 'waba',
-    27544613: 'waba', 27544237: 'waba', 27526725: 'waba', 27520261: 'waba',
-    27520239: 'instagram', 27517173: 'instagram', 27513333: 'waba', 27504181: 'waba',
-    27498989: 'waba', 27498279: 'waba', 27443537: 'facebook', 27434567: 'waba',
-    27431763: 'waba', 27431363: 'facebook',
-  };
-  const ids = Object.keys(KNOWN_CHANNEL);
-  const filterParams = ids.map(id => `filter[id][]=${id}`).join('&');
-  const resp = fetchWithRetry(
-    `https://${subdomain}/api/v4/leads?${filterParams}&with=source_id&limit=50`,
-    { headers, muteHttpExceptions: true });
-  Logger.log('HTTP: ' + resp.getResponseCode());
-  const data = JSON.parse(resp.getContentText());
-  const leads = (data._embedded && data._embedded.leads) || [];
-  Logger.log(`--- ${leads.length} de ${ids.length} leads encontrados ---`);
-  for (const l of leads) {
-    Logger.log(`lead id=${l.id} canal=${KNOWN_CHANNEL[l.id]} source_id=${l.source_id} status_id=${l.status_id}`);
-  }
-  const foundIds = new Set(leads.map(l => l.id));
-  const missing = ids.filter(id => !foundIds.has(Number(id)));
-  if (missing.length) Logger.log('--- no encontrados (todavía en unsorted, sin aceptar): ' + JSON.stringify(missing));
-}
-
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
@@ -360,15 +289,6 @@ const FIELD_CASA_VISITADA = 2444391;
 const FIELD_FUENTE = 578180;
 const FIELD_FECHA_VISITA = 576940;
 const FIELD_PHONE = 559132; // campo "Phone" del CONTACTO (visto en debugCustomFields)
-
-// Confirmado con debugSourceIdForKnownChannels() (6/10): todo lead cuya conversación terminó
-// siendo por WhatsApp (integración "waba") tiene este source_id, sin excepciones -- incluso un
-// lead que arrancó como comentario de Facebook pero siguió por WhatsApp (típico anuncio "click to
-// WhatsApp") lo tiene también. El usuario pidió contar como lead SOLO lo que viene por WhatsApp
-// ("Fuente de lead: Andres Coscor" en Kommo) y excluir Instagram/Facebook -- por eso source_id es
-// mejor señal que el canal de origen (source_name de /leads/unsorted): identifica dónde terminó la
-// conversación, no por dónde entró el contacto.
-const WHATSAPP_SOURCE_ID = 96097;
 
 // Devuelve el/los valor(es) de un campo personalizado por field_id, como string. Sirve tanto
 // para campos de texto/selección simple (values[0].value) como multiselección (values.length > 1
@@ -469,7 +389,7 @@ function syncKommoLeads() {
   let page = 1;
   while (true) {
     const resp = fetchWithRetry(
-      `https://${subdomain}/api/v4/leads?with=contacts,source_id&limit=250&page=${page}&order[id]=asc`,
+      `https://${subdomain}/api/v4/leads?with=contacts&limit=250&page=${page}&order[id]=asc`,
       { headers, muteHttpExceptions: true });
     if (resp.getResponseCode() === 204) break;
     const data = JSON.parse(resp.getContentText());
@@ -488,7 +408,6 @@ function syncKommoLeads() {
         id: l.id, created_at: l.created_at, status_id: l.status_id,
         status_name: statuses[l.status_id] || 'Desconocido',
         devTags, price: l.price || 0, utmCampaign, utmContent, fuente,
-        esWhatsapp: l.source_id === WHATSAPP_SOURCE_ID ? 1 : 0,
         contactId: mainContact ? mainContact.id : null,
       });
     }
@@ -523,17 +442,11 @@ function syncKommoLeads() {
       if (!leadId || existingIds.has(leadId) || seenUnsortedIds.has(leadId)) continue;
       seenUnsortedIds.add(leadId);
       const prefix = String(u.source_name || '').split(':')[0];
-      // Todavía no aceptado -> no tiene source_id resuelto como los leads normales, así que
-      // aproximamos por el canal del mensaje entrante (prefix === 'waba'). Un caso raro (comentario
-      // de Facebook/Instagram que termina en WhatsApp, visto en debugSourceIdForKnownChannels) va a
-      // quedar mal clasificado SOLO mientras está sin aceptar -- se autocorrige solo al día
-      // siguiente, cuando se acepta y el sync vuelve a traerlo con su source_id real.
       partial.push({
         id: leadId, created_at: u.created_at, status_id: 0,
         status_name: 'Leads entrantes',
         devTags: [], price: 0, utmCampaign: '', utmContent: '',
         fuente: SOURCE_PREFIX_TO_FUENTE[prefix] || '',
-        esWhatsapp: prefix === 'waba' ? 1 : 0,
         contactId: null,
       });
     }
@@ -570,14 +483,13 @@ function syncKommoLeads() {
       fechaVisita,
       contactName,
       phone,
-      p.esWhatsapp,
     ];
   });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Leads') || ss.insertSheet('Leads');
   sheet.clear();
-  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita', 'contact_name', 'phone', 'es_whatsapp']);
+  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita', 'contact_name', 'phone']);
   if (rows.length) sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   sheet.getRange(2, 2, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
   sheet.getRange(2, 14, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');

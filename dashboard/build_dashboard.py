@@ -6,12 +6,6 @@ XLSX_PATH = os.path.join(BASE, "claude_dashboard.xlsx")
 
 WON_ID, LOST_ID = 142, 143
 QUALIFIED_IDS = [105609867, 109532768, 105671691, 105671695, WON_ID]  # visita-reunion, reunion realizada, 2da reunion, negociacion, + ganados
-# El usuario pidió (6/10) contar como "lead" solo lo que entra por WhatsApp -- Instagram y
-# Facebook ya no cuentan (columna es_whatsapp, agregada en apps-script-sync.gs, basada en
-# source_id=96097 de Kommo). Pero esto es SOLO de ahora en adelante, no retroactivo: todo el
-# historial de antes de hoy sigue contando igual que siempre, para no distorsionar comparativas
-# y series históricas con una regla que no existía cuando esos leads entraron.
-WHATSAPP_ONLY_SINCE = datetime.date(2026, 10, 6)
 # "Visita calificada" (definido con el usuario, 22/8): un sub-conjunto más estricto de
 # QUALIFIED_IDS — solo las etapas avanzadas, sin contar la primera visita/reunión.
 QUALIFIED_VISIT_IDS = [105671691, 105671695, WON_ID]  # 2da reunion, negociacion, + ganados
@@ -108,10 +102,6 @@ for r in lead_rows:
     raw_name = get(r, "contact_name")
     contact_name = str(int(raw_name)) if isinstance(raw_name, float) else str(raw_name or "").strip()
     phone = str(get(r, "phone") or "").strip()
-    es_whatsapp = bool(get(r, "es_whatsapp", 1))  # default 1: sheet vieja sin esta columna todavía
-    if (isinstance(created_at, datetime.datetime) and created_at.date() >= WHATSAPP_ONLY_SINCE
-            and not es_whatsapp):
-        continue
     if status_id not in statuses:
         statuses[status_id] = status_name
         first_seen_status_order.append(status_id)
