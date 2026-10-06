@@ -415,6 +415,45 @@ function syncKommoLeads() {
     page++;
   }
 
+  // Fase 1.5: leads en la cola "Leads entrantes" (Unsorted) de Kommo -- mensajes de WhatsApp/
+  // Instagram/Facebook que todavía nadie "aceptó" del lado de ventas. Kommo les asigna un lead_id
+  // apenas llega el mensaje, pero GET /api/v4/leads (arriba) NO los devuelve hasta que se aceptan
+  // -- y cuando se aceptan, salvo que se confirme lo contrario, probablemente queden con un
+  // created_at nuevo (el de la aceptación), no el de cuando llegó el mensaje. Resultado: mientras
+  // están sin aceptar, no aparecen en ningún lado de este sync, aunque Kommo (su Kanban, su conteo
+  // de "N leads" filtrando por fecha) SÍ los cuenta desde que llegan. Confirmado el 6/10 con
+  // debugUnsortedLeads(): esto es lo que explicaba el hueco de leads en 2-5/10 (61 en Kommo vs 51
+  // en el dashboard para la misma semana). Los agregamos acá como leads "Sin clasificar" --
+  // dedupeados por id contra los leads ya traídos arriba, para no duplicar una vez que se aceptan.
+  const existingIds = new Set(partial.map(p => p.id));
+  const seenUnsortedIds = new Set();
+  const SOURCE_PREFIX_TO_FUENTE = { waba: 'WA', instagram: 'IG' };
+  let unsortedPage = 1;
+  while (true) {
+    const resp = fetchWithRetry(
+      `https://${subdomain}/api/v4/leads/unsorted?limit=250&page=${unsortedPage}`,
+      { headers, muteHttpExceptions: true });
+    if (resp.getResponseCode() === 204 || resp.getResponseCode() >= 400) break;
+    const data = JSON.parse(resp.getContentText());
+    const items = (data._embedded && data._embedded.unsorted) || [];
+    if (!items.length) break;
+    for (const u of items) {
+      const leadId = u.lead_id || (u._embedded && u._embedded.leads && u._embedded.leads[0] && u._embedded.leads[0].id);
+      if (!leadId || existingIds.has(leadId) || seenUnsortedIds.has(leadId)) continue;
+      seenUnsortedIds.add(leadId);
+      const prefix = String(u.source_name || '').split(':')[0];
+      partial.push({
+        id: leadId, created_at: u.created_at, status_id: 0,
+        status_name: 'Leads entrantes',
+        devTags: [], price: 0, utmCampaign: '', utmContent: '',
+        fuente: SOURCE_PREFIX_TO_FUENTE[prefix] || '',
+        contactId: null,
+      });
+    }
+    if (!data._links || !data._links.next) break;
+    unsortedPage++;
+  }
+
   // Fase 2: traer los custom_fields_values de todos los contactos referenciados, de una.
   const contactFields = fetchContactsById(contactIds);
 
