@@ -361,6 +361,15 @@ const FIELD_FUENTE = 578180;
 const FIELD_FECHA_VISITA = 576940;
 const FIELD_PHONE = 559132; // campo "Phone" del CONTACTO (visto en debugCustomFields)
 
+// Confirmado con debugSourceIdForKnownChannels() (6/10): todo lead cuya conversación terminó
+// siendo por WhatsApp (integración "waba") tiene este source_id, sin excepciones -- incluso un
+// lead que arrancó como comentario de Facebook pero siguió por WhatsApp (típico anuncio "click to
+// WhatsApp") lo tiene también. El usuario pidió contar como lead SOLO lo que viene por WhatsApp
+// ("Fuente de lead: Andres Coscor" en Kommo) y excluir Instagram/Facebook -- por eso source_id es
+// mejor señal que el canal de origen (source_name de /leads/unsorted): identifica dónde terminó la
+// conversación, no por dónde entró el contacto.
+const WHATSAPP_SOURCE_ID = 96097;
+
 // Devuelve el/los valor(es) de un campo personalizado por field_id, como string. Sirve tanto
 // para campos de texto/selección simple (values[0].value) como multiselección (values.length > 1
 // -> se unen con ", ", igual que se hace con los tags de desarrollo).
@@ -460,7 +469,7 @@ function syncKommoLeads() {
   let page = 1;
   while (true) {
     const resp = fetchWithRetry(
-      `https://${subdomain}/api/v4/leads?with=contacts&limit=250&page=${page}&order[id]=asc`,
+      `https://${subdomain}/api/v4/leads?with=contacts,source_id&limit=250&page=${page}&order[id]=asc`,
       { headers, muteHttpExceptions: true });
     if (resp.getResponseCode() === 204) break;
     const data = JSON.parse(resp.getContentText());
@@ -479,6 +488,7 @@ function syncKommoLeads() {
         id: l.id, created_at: l.created_at, status_id: l.status_id,
         status_name: statuses[l.status_id] || 'Desconocido',
         devTags, price: l.price || 0, utmCampaign, utmContent, fuente,
+        esWhatsapp: l.source_id === WHATSAPP_SOURCE_ID ? 1 : 0,
         contactId: mainContact ? mainContact.id : null,
       });
     }
@@ -513,11 +523,17 @@ function syncKommoLeads() {
       if (!leadId || existingIds.has(leadId) || seenUnsortedIds.has(leadId)) continue;
       seenUnsortedIds.add(leadId);
       const prefix = String(u.source_name || '').split(':')[0];
+      // Todavía no aceptado -> no tiene source_id resuelto como los leads normales, así que
+      // aproximamos por el canal del mensaje entrante (prefix === 'waba'). Un caso raro (comentario
+      // de Facebook/Instagram que termina en WhatsApp, visto en debugSourceIdForKnownChannels) va a
+      // quedar mal clasificado SOLO mientras está sin aceptar -- se autocorrige solo al día
+      // siguiente, cuando se acepta y el sync vuelve a traerlo con su source_id real.
       partial.push({
         id: leadId, created_at: u.created_at, status_id: 0,
         status_name: 'Leads entrantes',
         devTags: [], price: 0, utmCampaign: '', utmContent: '',
         fuente: SOURCE_PREFIX_TO_FUENTE[prefix] || '',
+        esWhatsapp: prefix === 'waba' ? 1 : 0,
         contactId: null,
       });
     }
@@ -554,13 +570,14 @@ function syncKommoLeads() {
       fechaVisita,
       contactName,
       phone,
+      p.esWhatsapp,
     ];
   });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Leads') || ss.insertSheet('Leads');
   sheet.clear();
-  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita', 'contact_name', 'phone']);
+  sheet.appendRow(['id', 'created_at', 'status_id', 'status_name', 'calificado', 'ganado', 'perdido', 'desarrollos', 'price', 'utm_campaign', 'utm_content', 'casa_visitada', 'fuente', 'fecha_visita', 'contact_name', 'phone', 'es_whatsapp']);
   if (rows.length) sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   sheet.getRange(2, 2, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
   sheet.getRange(2, 14, Math.max(rows.length, 1), 1).setNumberFormat('yyyy-mm-dd hh:mm');
