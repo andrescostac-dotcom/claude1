@@ -295,6 +295,44 @@ function debugLeadSources() {
   }
 }
 
+// --- DEBUG: /api/v4/sources vino vacío (204) -- no sirve para resolver source_id a un nombre en
+// esta cuenta. Alternativa: ya sabemos el canal real (WhatsApp/Instagram/Facebook) de los 30 leads
+// que vimos en debugUnsortedLeads() por su source_name (waba=WhatsApp, instagram_business_comments=
+// Instagram, facebook_comments=Facebook). Si les pedimos el source_id a esos mismos leads (ya
+// aceptados / convertidos), podemos armar la tabla canal -> source_id sin depender de /sources.
+// Correr desde el editor y pegarme el resultado completo.
+function debugSourceIdForKnownChannels() {
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+  // id -> canal, tomado tal cual del log de debugUnsortedLeads() del 6/10.
+  const KNOWN_CHANNEL = {
+    27667553: 'instagram', 27644969: 'waba', 27629041: 'waba', 27628469: 'instagram',
+    27626661: 'waba', 27614695: 'waba', 27580067: 'instagram', 27578643: 'waba',
+    27572349: 'waba', 27565497: 'waba', 27561695: 'waba', 27560639: 'waba',
+    27559383: 'waba', 27558895: 'waba', 27554697: 'instagram', 27551971: 'waba',
+    27544613: 'waba', 27544237: 'waba', 27526725: 'waba', 27520261: 'waba',
+    27520239: 'instagram', 27517173: 'instagram', 27513333: 'waba', 27504181: 'waba',
+    27498989: 'waba', 27498279: 'waba', 27443537: 'facebook', 27434567: 'waba',
+    27431763: 'waba', 27431363: 'facebook',
+  };
+  const ids = Object.keys(KNOWN_CHANNEL);
+  const filterParams = ids.map(id => `filter[id][]=${id}`).join('&');
+  const resp = fetchWithRetry(
+    `https://${subdomain}/api/v4/leads?${filterParams}&with=source_id&limit=50`,
+    { headers, muteHttpExceptions: true });
+  Logger.log('HTTP: ' + resp.getResponseCode());
+  const data = JSON.parse(resp.getContentText());
+  const leads = (data._embedded && data._embedded.leads) || [];
+  Logger.log(`--- ${leads.length} de ${ids.length} leads encontrados ---`);
+  for (const l of leads) {
+    Logger.log(`lead id=${l.id} canal=${KNOWN_CHANNEL[l.id]} source_id=${l.source_id} status_id=${l.status_id}`);
+  }
+  const foundIds = new Set(leads.map(l => l.id));
+  const missing = ids.filter(id => !foundIds.has(Number(id)));
+  if (missing.length) Logger.log('--- no encontrados (todavía en unsorted, sin aceptar): ' + JSON.stringify(missing));
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
