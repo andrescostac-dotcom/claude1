@@ -221,6 +221,47 @@ function debugRecentLeads() {
   Logger.log(JSON.stringify(ids));
 }
 
+// --- DEBUG: el 6/10 el usuario reportó 61 leads en Kommo vs 51 en el dashboard para el 29/9-5/10.
+// Noté que el Sheet actual no tiene NINGÚN lead con created_at en 2-5/10, aunque el total de leads
+// del Sheet creció +11/+7/+8 esos mismos días de sync -- es decir, están entrando leads nuevos pero
+// con fecha vieja, o estos leads todavía no son "Lead" formal. La hipótesis: esos leads están en la
+// cola "Leads entrantes" / "No distribuidos" (Unsorted) que se ve como columna aparte en Kommo y que
+// GET /api/v4/leads (lo que usa syncKommoLeads) probablemente NO devuelve -- Kommo los expone recién
+// cuando se "aceptan"/convierten en Lead formal, con fecha de creación de ESE momento (no de cuando
+// llegó el mensaje de WhatsApp). Esta función pide DIRECTO los "unsorted" (incoming leads) de Kommo
+// para ver si están ahí y cuántos hay. Correr desde el editor y pegarme el resultado completo.
+function debugUnsortedLeads() {
+  const subdomain = props().getProperty('KOMMO_SUBDOMAIN');
+  const token = props().getProperty('KOMMO_ACCESS_TOKEN');
+  const headers = { Authorization: 'Bearer ' + token };
+  let page = 1;
+  let total = 0;
+  while (true) {
+    const resp = fetchWithRetry(
+      `https://${subdomain}/api/v4/leads/unsorted?limit=50&page=${page}`,
+      { headers, muteHttpExceptions: true });
+    Logger.log(`HTTP página ${page}: ` + resp.getResponseCode());
+    if (resp.getResponseCode() === 204 || resp.getResponseCode() >= 400) {
+      if (page === 1) Logger.log(resp.getContentText());
+      break;
+    }
+    const data = JSON.parse(resp.getContentText());
+    const items = (data._embedded && data._embedded.unsorted) || [];
+    if (!items.length) break;
+    total += items.length;
+    Logger.log(`--- página ${page}: ${items.length} unsorted ---`);
+    for (const u of items) {
+      const created = u.created_at ? Utilities.formatDate(new Date(u.created_at * 1000), 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd HH:mm') : '?';
+      const leadId = u.lead_id || (u._embedded && u._embedded.leads && u._embedded.leads[0] && u._embedded.leads[0].id) || '?';
+      Logger.log(`uid=${u.uid} category=${u.category} created_at=${created} lead_id=${leadId} source_name=${u.source_name || ''}`);
+    }
+    if (!data._links || !data._links.next) break;
+    page++;
+    if (page > 20) { Logger.log('(corto en 20 páginas / 1000 items para no hacer esto eterno)'); break; }
+  }
+  Logger.log(`--- TOTAL unsorted encontrados: ${total} ---`);
+}
+
 // Busca en custom_fields_values del lead un campo cuyo nombre o código contenga alguno de
 // los patrones dados (comparación insensible a mayúsculas/espacios/guiones), y devuelve su
 // primer valor. Kommo suele guardar los UTM de un lead (los que trajo el clic del anuncio)
